@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>UADE · Depurador de Notas de Salida</title>
+<title>UADE · Depurador de Excels</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
   :root{
@@ -36,94 +36,99 @@
   header.app{
     background:linear-gradient(135deg, var(--navy-dark), var(--navy) 60%, var(--blue));
     color:#fff;
-    padding:28px 32px;
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    flex-wrap:wrap;
-    gap:12px;
-  }
-  header.app .brand{
+    padding:22px 32px;
     display:flex;
     align-items:center;
     gap:14px;
   }
-  header.app .brand .dot{
+  header.app .dot{
     width:10px;height:10px;border-radius:50%;
     background:var(--gold);
     box-shadow:0 0 0 4px rgba(201,162,75,.25);
+    flex:none;
   }
   header.app h1{
-    font-size:19px;
+    font-size:18px;
     margin:0;
     font-weight:600;
     letter-spacing:.2px;
   }
   header.app p{
-    margin:2px 0 0;
-    font-size:13px;
-    color:rgba(255,255,255,.75);
+    margin:1px 0 0;
+    font-size:12.5px;
+    color:rgba(255,255,255,.72);
   }
-  header.app .badge{
-    font-size:12px;
-    background:rgba(255,255,255,.12);
-    border:1px solid rgba(255,255,255,.25);
-    padding:6px 12px;
-    border-radius:999px;
+  nav.tabs{
+    max-width:1180px;
+    margin:0 auto;
+    padding:0 24px;
+    display:flex;
+    gap:6px;
+    background:var(--navy);
+    overflow-x:auto;
+  }
+  nav.tabs button{
+    appearance:none;
+    border:none;
+    background:transparent;
+    color:rgba(255,255,255,.65);
+    padding:12px 16px;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    border-bottom:3px solid transparent;
+    white-space:nowrap;
+  }
+  nav.tabs button.active{
     color:#fff;
+    border-bottom-color:var(--gold);
   }
   main{
     max-width:1180px;
     margin:0 auto;
-    padding:28px 24px 60px;
+    padding:24px 24px 60px;
   }
+  .panel{display:none;}
+  .panel.active{display:block;}
   .card{
     background:var(--card);
     border:1px solid var(--line);
     border-radius:var(--radius);
-    padding:22px;
-    margin-bottom:20px;
+    padding:20px;
+    margin-bottom:18px;
     box-shadow:0 1px 2px rgba(16,30,54,.04);
   }
   .card h2{
-    margin:0 0 6px;
-    font-size:15px;
+    margin:0 0 12px;
+    font-size:14px;
     font-weight:600;
     color:var(--navy);
   }
-  .card .sub{
-    margin:0 0 16px;
-    font-size:13px;
-    color:var(--text-muted);
-  }
-  #dropzone{
+  .dropzone{
     border:2px dashed #b9c4d3;
     border-radius:var(--radius);
-    padding:40px 20px;
+    padding:28px 20px;
     text-align:center;
     cursor:pointer;
     transition:.15s;
     background:#fafbfc;
   }
-  #dropzone.drag{
+  .dropzone.drag{
     border-color:var(--blue);
     background:#eef4fb;
   }
-  #dropzone .icon{
-    font-size:34px;
-    margin-bottom:8px;
-  }
-  #dropzone .main-txt{
-    font-size:14.5px;
+  .dropzone .icon{font-size:28px; margin-bottom:6px;}
+  .dropzone .main-txt{
+    font-size:14px;
     font-weight:600;
     color:var(--navy);
-    margin-bottom:4px;
+    margin-bottom:3px;
   }
-  #dropzone .sub-txt{
-    font-size:12.5px;
+  .dropzone .sub-txt{
+    font-size:12px;
     color:var(--text-muted);
   }
-  #fileInput{display:none;}
+  input[type=file]{display:none;}
   .btn{
     display:inline-flex;
     align-items:center;
@@ -139,14 +144,7 @@
     transition:.15s;
   }
   .btn:hover{background:#164e8c;}
-  .btn:disabled{background:#a9b6c4;cursor:not-allowed;}
-  .btn.secondary{
-    background:#fff;
-    color:var(--navy);
-    border:1px solid var(--line);
-  }
-  .btn.secondary:hover{background:#f1f4f8;}
-  #error{
+  .err-box{
     display:none;
     background:var(--danger-bg);
     color:var(--danger);
@@ -156,88 +154,112 @@
     font-size:13.5px;
     margin-top:14px;
   }
-  #results{display:none;}
+  .results{display:none;}
+  .sub{
+    margin:0 0 14px;
+    font-size:12.5px;
+    color:var(--text-muted);
+  }
   .stat-row{
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(160px,1fr));
-    gap:14px;
-    margin-bottom:6px;
+    grid-template-columns:repeat(auto-fit, minmax(150px,1fr));
+    gap:12px;
   }
   .stat{
     border:1px solid var(--line);
     border-radius:10px;
-    padding:14px 16px;
+    padding:12px 14px;
     background:#fbfcfd;
   }
-  .stat .n{
-    font-size:24px;
-    font-weight:700;
-    color:var(--navy);
-    line-height:1.1;
+  .stat .n{font-size:22px; font-weight:700; color:var(--navy); line-height:1.1;}
+  .stat .l{font-size:11.5px; color:var(--text-muted); margin-top:3px;}
+  .stat.fixed{border-color:var(--warn);}
+  .stat.fixed .n{color:var(--warn);}
+  .stat.aviso{border-color:var(--info);}
+  .stat.aviso .n{color:var(--info);}
+  .stat.anomaly{border-color:var(--danger);}
+  .stat.anomaly .n{color:var(--danger);}
+
+  .health-bar{
+    display:flex;
+    height:8px;
+    border-radius:999px;
+    overflow:hidden;
+    margin:14px 0 8px;
+    background:#eef1f5;
   }
-  .stat .l{
+  .health-seg{height:100%;}
+  .seg-ok{background:var(--ok);}
+  .seg-warn{background:var(--warn);}
+  .seg-info{background:var(--info);}
+  .seg-danger{background:var(--danger);}
+  .health-legend{
+    display:flex;
+    flex-wrap:wrap;
+    gap:12px;
+    font-size:11.5px;
+    color:var(--text-muted);
+    margin-bottom:10px;
+  }
+  .health-legend span{display:inline-flex; align-items:center; gap:5px;}
+  .health-legend i{width:8px; height:8px; border-radius:50%; display:inline-block;}
+
+  .aviso-details{
     font-size:12px;
     color:var(--text-muted);
-    margin-top:4px;
+    margin-top:8px;
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:6px 10px;
+    background:#fbfcfd;
   }
-  .stat.fixed .n{color:var(--warn);}
+  .aviso-details.fixed{border-color:#f0dfa8;}
+  .aviso-details.aviso{border-color:#c9dcf3;}
+  .aviso-details.anomaly{border-color:#f0c4c0;}
+  .aviso-details summary{cursor:pointer; font-weight:600;}
+  .aviso-details.fixed summary{color:var(--warn);}
+  .aviso-details.aviso summary{color:var(--info);}
+  .aviso-details.anomaly summary{color:var(--danger);}
+  .aviso-details .ids{margin-top:6px; line-height:1.6; word-break:break-word;}
+
   .toolbar{
     display:flex;
     align-items:center;
     justify-content:space-between;
     flex-wrap:wrap;
     gap:10px;
-    margin:18px 0 12px;
+    margin:16px 0 12px;
   }
-  .toolbar .left{
-    display:flex;
-    align-items:center;
-    gap:10px;
-    flex-wrap:wrap;
-  }
-  #search{
+  .toolbar .left{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .search-input{
     border:1px solid var(--line);
     border-radius:8px;
     padding:9px 12px;
     font-size:13px;
-    width:260px;
-    max-width:60vw;
+    width:240px;
+    max-width:55vw;
   }
   .chk{
-    display:flex;
-    align-items:center;
-    gap:6px;
-    font-size:13px;
-    color:var(--text-muted);
-    user-select:none;
-    cursor:pointer;
+    display:flex; align-items:center; gap:6px;
+    font-size:13px; color:var(--text-muted);
+    user-select:none; cursor:pointer;
   }
   .table-wrap{
     border:1px solid var(--line);
     border-radius:10px;
     overflow:auto;
-    max-height:65vh;
+    max-height:60vh;
   }
-  table{
-    border-collapse:collapse;
-    width:100%;
-    font-size:12.5px;
-    white-space:nowrap;
-  }
+  table{border-collapse:collapse; width:100%; font-size:12px; white-space:nowrap;}
   thead th{
-    position:sticky;
-    top:0;
-    background:var(--navy);
-    color:#fff;
-    text-align:left;
-    padding:10px 12px;
-    font-weight:600;
-    z-index:1;
+    position:sticky; top:0;
+    background:var(--navy); color:#fff;
+    text-align:left; padding:9px 11px; font-weight:600; z-index:1;
   }
   tbody td{
-    padding:8px 12px;
+    padding:7px 11px;
     border-bottom:1px solid #eef1f5;
-    max-width:260px;
+    max-width:240px;
     overflow:hidden;
     text-overflow:ellipsis;
   }
@@ -250,164 +272,58 @@
   tbody tr.info-row:hover{background:#d9e8f8;}
   .tag{
     display:inline-block;
-    font-size:10.5px;
+    font-size:10px;
     font-weight:700;
-    padding:2px 7px;
+    padding:2px 6px;
     border-radius:999px;
     background:var(--warn);
     color:#fff;
-    margin-left:6px;
+    margin-left:5px;
     vertical-align:middle;
   }
   .tag.danger{background:var(--danger);}
   .tag.info{background:var(--info);}
-  #rowCountInfo{
-    font-size:12.5px;
-    color:var(--text-muted);
-  }
+  .row-count-info{font-size:12px; color:var(--text-muted);}
   footer{
     text-align:center;
     font-size:12px;
     color:var(--text-muted);
-    padding:20px 0 40px;
+    padding:16px 0 40px;
   }
-  .fixed-list{
-    font-size:12.5px;
-    color:var(--text-muted);
-    margin-top:10px;
-    line-height:1.6;
-    word-break:break-word;
-  }
-  .fixed-list b{color:var(--warn);}
-  .fixed-list.anomaly{color:var(--danger);}
-  .fixed-list.anomaly b{color:var(--danger);}
-  .fixed-list.info{color:var(--info);}
-  .fixed-list.info b{color:var(--info);}
 </style>
 </head>
 <body>
 
 <header class="app">
-  <div class="brand">
-    <span class="dot"></span>
-    <div>
-      <h1>Depurador de Notas de Salida</h1>
-      <p>Contabilidad · UADE</p>
-    </div>
+  <span class="dot"></span>
+  <div>
+    <h1>Depurador de Excels</h1>
+    <p>Contabilidad · UADE</p>
   </div>
-  <span class="badge">Corrección automática de tabs / saltos de línea incrustados</span>
 </header>
 
-<main>
-  <div class="card">
-    <h2>1. Subir archivo</h2>
-    <p class="sub">Subí el archivo de exportación tal cual lo entrega el sistema (el .xls con formato "Notas_de_Salida_...").</p>
-    <div id="dropzone">
-      <div class="icon">📄</div>
-      <div class="main-txt">Arrastrá el archivo acá o hacé clic para elegirlo</div>
-      <div class="sub-txt">Formato esperado: .xls (texto delimitado por tabs)</div>
-      <input type="file" id="fileInput" accept=".xls,.txt,.csv,.tsv">
-    </div>
-    <div id="error"></div>
-  </div>
+<nav class="tabs" id="tabsNav"></nav>
 
-  <div class="card" id="results">
-    <h2>2. Resultado</h2>
-    <p class="sub" id="fileNameLabel"></p>
-
-    <div class="stat-row">
-      <div class="stat">
-        <div class="n" id="statTotal">0</div>
-        <div class="l">Filas de datos</div>
-      </div>
-      <div class="stat">
-        <div class="n" id="statCols">0</div>
-        <div class="l">Columnas</div>
-      </div>
-      <div class="stat fixed">
-        <div class="n" id="statFixedNewline">0</div>
-        <div class="l">Filas con salto de línea corregido en DESTINATARIO</div>
-      </div>
-      <div class="stat fixed">
-        <div class="n" id="statFixedCantidad">0</div>
-        <div class="l">Filas con columna corrida corregida (desde CANTIDAD)</div>
-      </div>
-      <div class="stat" style="border-color:var(--info)">
-        <div class="n" id="statEstado" style="color:var(--info)">0</div>
-        <div class="l">Filas con ESTADO distinto de CERRADO</div>
-      </div>
-      <div class="stat" style="border-color:var(--info)">
-        <div class="n" id="statDuplicados" style="color:var(--info)">0</div>
-        <div class="l">Filas duplicadas exactas</div>
-      </div>
-    </div>
-
-    <div id="fixedListWrapNewline" style="display:none">
-      <div class="fixed-list">
-        <b>N° de nota de salida corregidas (salto de línea):</b> <span id="fixedListTextNewline"></span>
-      </div>
-    </div>
-    <div id="fixedListWrapCantidad" style="display:none">
-      <div class="fixed-list">
-        <b>N° de nota de salida corregidas (columna corrida):</b> <span id="fixedListTextCantidad"></span>
-      </div>
-    </div>
-    <div id="anomalyWrap" style="display:none">
-      <div class="fixed-list anomaly">
-        <b>⚠ N° de nota de salida con un problema NO reconocido (revisar a mano, no se modificaron):</b> <span id="anomalyListText"></span>
-      </div>
-    </div>
-    <div id="estadoWrap" style="display:none">
-      <div class="fixed-list info">
-        <b>ⓘ N° de nota de salida con ESTADO vacío o distinto de CERRADO (dato real del archivo, no un error de parseo):</b> <span id="estadoListText"></span>
-      </div>
-    </div>
-    <div id="duplicadosWrap" style="display:none">
-      <div class="fixed-list info">
-        <b>ⓘ N° de nota de salida con una fila 100% duplicada (mismo producto, mismo importe, repetido):</b> <span id="duplicadosListText"></span>
-      </div>
-    </div>
-
-    <div class="toolbar">
-      <div class="left">
-        <input type="text" id="search" placeholder="Buscar en cualquier columna…">
-        <label class="chk"><input type="checkbox" id="onlyFixed"> Ver solo filas para revisar</label>
-      </div>
-      <div style="display:flex; align-items:center; gap:12px;">
-        <span id="rowCountInfo"></span>
-        <button class="btn" id="downloadBtn">⬇ Descargar Excel depurado</button>
-      </div>
-    </div>
-
-    <div class="table-wrap">
-      <table>
-        <thead><tr id="theadRow"></tr></thead>
-        <tbody id="tbody"></tbody>
-      </table>
-    </div>
-  </div>
-</main>
+<main id="panelsRoot"></main>
 
 <footer>Herramienta interna de depuración de exportaciones · no reemplaza el archivo original</footer>
 
 <script>
-const HEADER_ROWS_TO_SKIP = 5;
-const REQUIRED_HEADERS = ['NOTASALIDA','CODIGOPRODUCTO'];
-const NUMERIC_COLS = new Set(['CANTIDAD','PRECUNIT','TOTALSINDESCUENTOS']);
-const DATE_COLS = new Set(['FECHA_TRANSACCION']);
-const TEXT_COLS_KEEP_LEADING_ZEROS = new Set(['NOTASALIDA','CODIGO_CUENTA','CODIGOPRODUCTO']);
-
-let PARSED = null; // { headers, rows, fixedCount, fixedIds }
-let SOURCE_NAME = '';
-
+/* ---------- utilidades compartidas ---------- */
+function escapeHtml(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 function parseArgNumber(v){
   if (v === '' || v == null) return null;
   const n = parseFloat(String(v).replace(',', '.'));
   return isNaN(n) ? null : n;
 }
 function dateToExcelSerial(y, m, d){
-  // Days since the Excel/SheetJS 1900-date-system epoch (1899-12-30), computed purely
-  // via Date.UTC arithmetic so the result never depends on the browser's local timezone.
+  // Días desde el epoch 1899-12-30 del sistema de fechas de Excel/SheetJS, calculado
+  // con aritmética Date.UTC pura para que nunca dependa de la zona horaria del navegador.
   return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000);
 }
 function parseArgDate(v){
@@ -415,17 +331,26 @@ function parseArgDate(v){
   if (!m) return null;
   return dateToExcelSerial(+m[3], +m[2], +m[1]);
 }
+function sniffBinary(buf){
+  const b = new Uint8Array(buf.slice(0, 8));
+  const isZip = b[0] === 0x50 && b[1] === 0x4B;
+  const isOle = b[0] === 0xD0 && b[1] === 0xCF && b[2] === 0x11 && b[3] === 0xE0;
+  return isZip ? 'xlsx' : (isOle ? 'xls' : null);
+}
 
+/* ================= módulo: Notas de Salida ================= */
 function parseNotasSalida(text){
+  const HEADER_ROWS_TO_SKIP = 5;
+  const REQUIRED = ['NOTASALIDA', 'CODIGOPRODUCTO'];
+
   let lines = text.split('\r\n');
-  while (lines.length && lines[lines.length-1].trim() === '') lines.pop();
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
   if (lines.length <= HEADER_ROWS_TO_SKIP){
     throw new Error('El archivo tiene muy pocas filas — no parece una exportación de Notas de Salida completa.');
   }
-  const headerLine = lines[HEADER_ROWS_TO_SKIP];
-  const headers = headerLine.split('\t').map(h => h.trim());
+  const headers = lines[HEADER_ROWS_TO_SKIP].split('\t').map(h => h.trim());
   if (headers.length && headers[headers.length - 1] === '') headers.pop();
-  const missing = REQUIRED_HEADERS.filter(h => !headers.includes(h));
+  const missing = REQUIRED.filter(h => !headers.includes(h));
   if (missing.length){
     throw new Error('No se encontró el encabezado esperado en la fila 6 (faltan columnas: ' + missing.join(', ') + '). ¿Es el archivo correcto?');
   }
@@ -433,34 +358,28 @@ function parseNotasSalida(text){
   const cantidadIdx = headers.indexOf('CANTIDAD');
   const dataLines = lines.slice(HEADER_ROWS_TO_SKIP + 1).filter(l => l.trim() !== '');
   const rows = [];
-  const fixedNewlineIds = [];
-  const fixedCantidadIds = [];
-  const anomalyIds = [];
 
   for (const line of dataLines){
     let rawFields = line.split('\t');
-    // Every row (broken or not) ends with one harmless trailing empty column, from a
-    // trailing tab in the source file — drop it before comparing lengths to headers.
     if (rawFields.length > headers.length && rawFields[rawFields.length - 1] === ''){
       rawFields = rawFields.slice(0, -1);
     }
 
-    let fixedCantidadShift = false;
-    let anomaly = false;
-
-    // Second known defect: a stray embedded tab lands right before CANTIDAD, producing
-    // one extra empty field at CANTIDAD's position and pushing every field after it one
-    // column to the right. Dropping that phantom empty field realigns the rest of the
-    // row. Any other field-count mismatch is unrecognized — flagged, not guessed at.
+    let fixedCantidad = false, anomaly = false;
+    // Tab incrustado justo antes de CANTIDAD: produce un campo vacío fantasma que corre
+    // todo lo posterior una columna a la derecha. Se detecta por longitud (header+1 con
+    // CANTIDAD vacío) y se corrige eliminando el campo fantasma.
     if (rawFields.length !== headers.length){
       if (rawFields.length === headers.length + 1 && cantidadIdx >= 0 && rawFields[cantidadIdx] === ''){
         rawFields = rawFields.slice(0, cantidadIdx).concat(rawFields.slice(cantidadIdx + 1));
-        fixedCantidadShift = true;
-      }else{
+        fixedCantidad = true;
+      } else {
         anomaly = true;
       }
     }
 
+    // Salto de línea incrustado en DESTINATARIO: se separa por \r\n, nunca por \n solo,
+    // así que la fila nunca llega a partirse — el \n queda como contenido y se limpia.
     let hadNewline = false;
     const fields = rawFields.map(f => {
       if (f.indexOf('\n') !== -1 || f.indexOf('\r') !== -1){
@@ -469,211 +388,435 @@ function parseNotasSalida(text){
       }
       return f.trim();
     });
+
     const row = {};
     headers.forEach((h, i) => { row[h] = fields[i] !== undefined ? fields[i] : ''; });
-    row.__fixedNewline = hadNewline;
-    row.__fixedCantidad = fixedCantidadShift;
-    row.__anomaly = anomaly;
-    row.__fixed = hadNewline || fixedCantidadShift;
-
-    const nota = row['NOTASALIDA'] || '(sin número)';
-    if (hadNewline) fixedNewlineIds.push(nota);
-    if (fixedCantidadShift) fixedCantidadIds.push(nota);
-    if (anomaly) anomalyIds.push(nota);
+    row._id = row['NOTASALIDA'] || '(sin número)';
+    row._flags = { newline: hadNewline, cantidad: fixedCantidad, anomaly: anomaly, estado: false, duplicado: false };
     rows.push(row);
   }
 
-  // Content-level flags, distinct from the structural fixes above: these are real data
-  // in the file, not parsing defects, so rows are only marked — never modified.
-  const estadoIdx = headers.indexOf('ESTADO');
-  const estadoIds = [];
-  if (estadoIdx >= 0){
-    rows.forEach(r => {
-      r.__estadoAviso = r['ESTADO'] !== 'CERRADO';
-      if (r.__estadoAviso) estadoIds.push(r['NOTASALIDA'] || '(sin número)');
-    });
+  // Avisos de contenido (no son bugs de parseo — datos reales, solo se señalan).
+  if (headers.includes('ESTADO')){
+    rows.forEach(r => { r._flags.estado = r['ESTADO'] !== 'CERRADO'; });
   }
-
   const dupCounts = new Map();
   rows.forEach(r => {
     const key = headers.map(h => r[h]).join('');
     dupCounts.set(key, (dupCounts.get(key) || 0) + 1);
   });
-  const duplicadoIds = [];
   rows.forEach(r => {
     const key = headers.map(h => r[h]).join('');
-    r.__duplicado = dupCounts.get(key) > 1;
-    if (r.__duplicado) duplicadoIds.push(r['NOTASALIDA'] || '(sin número)');
+    r._flags.duplicado = dupCounts.get(key) > 1;
   });
 
   return {
     headers, rows,
-    fixedNewlineCount: fixedNewlineIds.length, fixedNewlineIds,
-    fixedCantidadCount: fixedCantidadIds.length, fixedCantidadIds,
-    anomalyCount: anomalyIds.length, anomalyIds,
-    estadoCount: estadoIds.length, estadoIds,
-    duplicadoCount: duplicadoIds.length, duplicadoIds
+    fixes: [
+      { key: 'newline', label: 'Filas con salto de línea corregido en DESTINATARIO', col: 'DESTINATARIO', tagText: () => 'salto de línea corregido' },
+      { key: 'cantidad', label: 'Filas con columna corrida corregida (desde CANTIDAD)', col: 'CANTIDAD', tagText: () => 'columna corregida' }
+    ],
+    avisos: [
+      { key: 'estado', label: 'Filas con ESTADO distinto de CERRADO', col: 'ESTADO', tagText: r => r['ESTADO'] ? 'no cerrada' : 'sin estado' },
+      { key: 'duplicado', label: 'Filas duplicadas exactas', col: 'NOTASALIDA', tagText: () => 'duplicada' }
+    ]
   };
 }
 
-async function handleFile(file){
-  hideError();
-  SOURCE_NAME = file.name;
-  const buf = await file.arrayBuffer();
-  const bytes = new Uint8Array(buf.slice(0, 8));
-  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4B;
-  const isOle = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+/* ================= módulo: Requerimientos de Gastos ================= */
+function parseRequerimientosGastos(text){
+  const HEADER_ROWS_TO_SKIP = 6;
+  const REQUIRED = ['NUMERO', 'ESTADO', 'CODIGOPROD'];
+  const CODIGOPROD_RE = /^[A-Z]{3}\d{18}$/;
+  const SINO = new Set(['SI', 'NO']);
 
-  if (isZip || isOle){
-    showError('Este archivo es un Excel binario real (' + (isZip ? '.xlsx' : '.xls antiguo') + '). Esta herramienta espera el archivo de texto tal cual lo entrega el sistema de Notas de Salida (el .xls que en realidad es texto separado por tabs). Subí ese archivo directamente, sin abrirlo/guardarlo antes en Excel.');
+  let lines = text.split('\r\n');
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  if (lines.length <= HEADER_ROWS_TO_SKIP){
+    throw new Error('El archivo tiene muy pocas filas — no parece una exportación de Requerimientos de Gastos completa.');
+  }
+  const headers = lines[HEADER_ROWS_TO_SKIP].split('\t').map(h => h.trim());
+  if (headers.length && headers[headers.length - 1] === '') headers.pop();
+  const missing = REQUIRED.filter(h => !headers.includes(h));
+  if (missing.length){
+    throw new Error('No se encontró el encabezado esperado en la fila 7 (faltan columnas: ' + missing.join(', ') + '). ¿Es el archivo correcto?');
+  }
+
+  const N = headers.length;
+  const dataLines = lines.slice(HEADER_ROWS_TO_SKIP + 1).filter(l => l.trim() !== '');
+  const rows = [];
+
+  function buildRow(fieldsArr, flags){
+    const row = {};
+    headers.forEach((h, i) => { row[h] = (fieldsArr[i] !== undefined ? fieldsArr[i] : '').trim(); });
+    row._id = row['NUMERO'] || '(sin número)';
+    row._flags = Object.assign({ notaDetalle: false, datosProveedor: false, detalleObs: false, anomaly: false }, flags);
+    return row;
+  }
+
+  for (const line of dataLines){
+    let f = line.split('\t');
+    if (f.length > N && f[f.length - 1] === '') f = f.slice(0, -1);
+
+    if (f.length === N){
+      rows.push(buildRow(f, {}));
+      continue;
+    }
+
+    // Campos de texto libre (NOTA/DETALLE, DATOSPROVEEDOR, DETALLE_ITEM/OBSERVACIONES)
+    // pueden traer tabs incrustados (pegados desde otro lado) que fragmentan la fila en
+    // más columnas de las que corresponden. Se reconstruye ubicando 3 anclas confiables
+    // que nunca vienen de texto libre: SINPARTIDA (SI/NO), el bloque de 3 SI/NO seguido
+    // (ESCHEQUERAPIDO, COMPRAWEB, COMPRA_ALTO_MONTO) y CODIGOPROD (patrón fijo AAA######
+    // ################## de 21 caracteres). Todo lo que sobra entre anclas se reabsorbe
+    // en el campo de texto libre correspondiente, uniendo con espacios.
+    if (f.length < 15){
+      rows.push(buildRow(f, { anomaly: true }));
+      continue;
+    }
+    const head = f.slice(0, 5);
+    const tail = f.slice(-10);
+    const middle = f.slice(5, f.length - 10);
+    const n = middle.length;
+
+    let ok = true;
+    const spIdx = middle.findIndex(v => SINO.has(v));
+    if (spIdx === -1) ok = false;
+
+    let block3 = -1;
+    if (ok){
+      for (let i = spIdx + 1; i <= n - 3; i++){
+        if (SINO.has(middle[i]) && SINO.has(middle[i + 1]) && SINO.has(middle[i + 2])){ block3 = i; break; }
+      }
+      if (block3 === -1) ok = false;
+    }
+
+    let cpIdx = -1;
+    if (ok){
+      for (let i = block3 + 3; i < n; i++){
+        if (CODIGOPROD_RE.test(middle[i])){ cpIdx = i; break; }
+      }
+      if (cpIdx === -1) ok = false;
+    }
+
+    let notaDetalleBlob, origProvBlob, safe6, codigoprod, descripcionprod, itemObsBlob;
+    if (ok){
+      notaDetalleBlob = middle.slice(0, spIdx);
+      origProvBlob = middle.slice(spIdx + 1, block3);
+      safe6 = middle.slice(block3 + 3, cpIdx);
+      codigoprod = middle[cpIdx];
+      descripcionprod = cpIdx + 1 < n ? middle[cpIdx + 1] : '';
+      itemObsBlob = middle.slice(cpIdx + 2);
+      if (safe6.length !== 6) ok = false;
+      if (origProvBlob.length < 3) ok = false;
+    }
+
+    if (!ok){
+      rows.push(buildRow(f, { anomaly: true }));
+      continue;
+    }
+
+    function collapse(blob, expected){
+      if (blob.length === expected) return { vals: blob.slice(), merged: false };
+      const m = blob.join(' ');
+      return { vals: new Array(expected).fill(m), merged: true };
+    }
+    const nd = collapse(notaDetalleBlob, 2);
+    const io = collapse(itemObsBlob, 2);
+    let opVals, opMerged;
+    if (origProvBlob.length === 3){ opVals = origProvBlob.slice(); opMerged = false; }
+    else { opVals = [origProvBlob[0], origProvBlob[1], origProvBlob.slice(2).join(' ')]; opMerged = true; }
+
+    const sinpartida = middle[spIdx];
+    const esche = middle[block3], compraweb = middle[block3 + 1], altomonto = middle[block3 + 2];
+    const rebuilt = head.concat(nd.vals, [sinpartida], opVals, [esche, compraweb, altomonto], safe6, [codigoprod, descripcionprod], io.vals, tail);
+    rows.push(buildRow(rebuilt, { notaDetalle: nd.merged, datosProveedor: opMerged, detalleObs: io.merged }));
+  }
+
+  return {
+    headers, rows,
+    fixes: [
+      { key: 'notaDetalle', label: 'Filas con NOTA/DETALLE recompuesto (tab incrustado)', col: 'NOTA', tagText: () => 'texto recompuesto' },
+      { key: 'datosProveedor', label: 'Filas con DATOSPROVEEDOR recompuesto', col: 'DATOSPROVEEDOR', tagText: () => 'texto recompuesto' },
+      { key: 'detalleObs', label: 'Filas con DETALLE_ITEM / OBSERVACIONES recompuesto', col: 'DETALLE_ITEM', tagText: () => 'texto recompuesto' }
+    ],
+    avisos: []
+  };
+}
+
+/* ================= definición de módulos / motor genérico ================= */
+const MODULES = [
+  {
+    id: 'ns',
+    tabLabel: 'Notas de Salida',
+    fileHint: 'Formato esperado: .xls (texto delimitado por tabs)',
+    accept: '.xls,.txt,.csv,.tsv',
+    parseFn: parseNotasSalida,
+    numericCols: new Set(['CANTIDAD', 'PRECUNIT', 'TOTALSINDESCUENTOS']),
+    dateCols: new Set(['FECHA_TRANSACCION']),
+    sheetName: 'Notas de Salida',
+    fileBase: 'notas_salida'
+  },
+  {
+    id: 'rg',
+    tabLabel: 'Requerimientos de Gastos',
+    fileHint: 'Formato esperado: .xls (texto delimitado por tabs)',
+    accept: '.xls,.txt,.csv,.tsv',
+    parseFn: parseRequerimientosGastos,
+    numericCols: new Set(['MPORTE_UNITARIO', 'CANTIDAD', 'IMPORTE_TOTAL_LINEA', 'VALORTOTAL']),
+    dateCols: new Set(['FECHA_TRANSACCION', 'FECHA_ULTIMOESTADO']),
+    sheetName: 'Requerimientos de Gastos',
+    fileBase: 'requerimientos_gastos'
+  }
+];
+MODULES.forEach(m => { m.state = { parsed: null, sourceName: '' }; });
+
+function buildShell(){
+  const tabsNav = document.getElementById('tabsNav');
+  const panelsRoot = document.getElementById('panelsRoot');
+
+  MODULES.forEach((mod, i) => {
+    const btn = document.createElement('button');
+    btn.textContent = mod.tabLabel;
+    btn.className = i === 0 ? 'active' : '';
+    btn.addEventListener('click', () => activateTab(mod.id));
+    btn.id = 'tabbtn-' + mod.id;
+    tabsNav.appendChild(btn);
+
+    const panel = document.createElement('section');
+    panel.className = 'panel' + (i === 0 ? ' active' : '');
+    panel.id = 'panel-' + mod.id;
+    panel.innerHTML = `
+      <div class="card">
+        <h2>Subir archivo</h2>
+        <div class="dropzone" id="${mod.id}-dropzone">
+          <div class="icon">📄</div>
+          <div class="main-txt">Arrastrá el archivo acá o hacé clic para elegirlo</div>
+          <div class="sub-txt">${escapeHtml(mod.fileHint)}</div>
+          <input type="file" id="${mod.id}-fileInput" accept="${mod.accept}">
+        </div>
+        <div class="err-box" id="${mod.id}-error"></div>
+      </div>
+
+      <div class="card results" id="${mod.id}-results">
+        <h2>Resultado</h2>
+        <p class="sub" id="${mod.id}-fileName"></p>
+        <div class="stat-row" id="${mod.id}-statRow"></div>
+        <div id="${mod.id}-healthWrap"></div>
+        <div id="${mod.id}-detailsWrap"></div>
+
+        <div class="toolbar">
+          <div class="left">
+            <input type="text" class="search-input" id="${mod.id}-search" placeholder="Buscar en cualquier columna…">
+            <label class="chk"><input type="checkbox" id="${mod.id}-onlyFixed"> Ver solo filas para revisar</label>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span class="row-count-info" id="${mod.id}-rowCountInfo"></span>
+            <button class="btn" id="${mod.id}-downloadBtn">⬇ Descargar Excel depurado</button>
+          </div>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead><tr id="${mod.id}-theadRow"></tr></thead>
+            <tbody id="${mod.id}-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    panelsRoot.appendChild(panel);
+
+    wireModule(mod);
+  });
+}
+
+function activateTab(id){
+  MODULES.forEach(m => {
+    document.getElementById('tabbtn-' + m.id).classList.toggle('active', m.id === id);
+    document.getElementById('panel-' + m.id).classList.toggle('active', m.id === id);
+  });
+}
+
+function wireModule(mod){
+  const dropzone = document.getElementById(mod.id + '-dropzone');
+  const fileInput = document.getElementById(mod.id + '-fileInput');
+
+  dropzone.addEventListener('click', () => fileInput.click());
+  dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropzone.classList.remove('drag');
+    if (e.dataTransfer.files.length) handleFile(mod, e.dataTransfer.files[0]);
+  });
+  fileInput.addEventListener('change', e => {
+    if (e.target.files.length) handleFile(mod, e.target.files[0]);
+  });
+
+  document.getElementById(mod.id + '-search').addEventListener('input', () => renderTableBody(mod));
+  document.getElementById(mod.id + '-onlyFixed').addEventListener('change', () => renderTableBody(mod));
+  document.getElementById(mod.id + '-downloadBtn').addEventListener('click', () => downloadCleaned(mod));
+}
+
+async function handleFile(mod, file){
+  const errBox = document.getElementById(mod.id + '-error');
+  errBox.style.display = 'none';
+  mod.state.sourceName = file.name;
+
+  const buf = await file.arrayBuffer();
+  const binaryKind = sniffBinary(buf);
+  if (binaryKind){
+    errBox.textContent = 'Este archivo es un Excel binario real (.' + binaryKind + '). Esta herramienta espera el archivo de texto tal cual lo entrega el sistema (el .xls que en realidad es texto separado por tabs). Subí ese archivo directamente, sin abrirlo/guardarlo antes en Excel.';
+    errBox.style.display = 'block';
+    document.getElementById(mod.id + '-results').style.display = 'none';
     return;
   }
 
   const text = new TextDecoder('windows-1252').decode(buf);
   try{
-    PARSED = parseNotasSalida(text);
+    mod.state.parsed = mod.parseFn(text);
   }catch(err){
-    showError(err.message);
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+    document.getElementById(mod.id + '-results').style.display = 'none';
     return;
   }
-  renderResults();
+  renderModule(mod);
 }
 
-function showError(msg){
-  const el = document.getElementById('error');
-  el.textContent = msg;
-  el.style.display = 'block';
-  document.getElementById('results').style.display = 'none';
-}
-function hideError(){
-  document.getElementById('error').style.display = 'none';
-}
+function renderModule(mod){
+  const P = mod.state.parsed;
+  const { headers, rows, fixes, avisos } = P;
 
-function renderResults(){
-  const { headers, rows, fixedNewlineCount, fixedNewlineIds, fixedCantidadCount, fixedCantidadIds, anomalyCount, anomalyIds, estadoCount, estadoIds, duplicadoCount, duplicadoIds } = PARSED;
-  document.getElementById('results').style.display = 'block';
-  document.getElementById('fileNameLabel').textContent = 'Archivo: ' + SOURCE_NAME;
-  document.getElementById('statTotal').textContent = rows.length.toLocaleString('es-AR');
-  document.getElementById('statCols').textContent = headers.length;
-  document.getElementById('statFixedNewline').textContent = fixedNewlineCount;
-  document.getElementById('statFixedCantidad').textContent = fixedCantidadCount;
-  document.getElementById('statEstado').textContent = estadoCount;
-  document.getElementById('statDuplicados').textContent = duplicadoCount;
+  document.getElementById(mod.id + '-results').style.display = 'block';
+  document.getElementById(mod.id + '-fileName').textContent = 'Archivo: ' + mod.state.sourceName;
 
-  const wrapN = document.getElementById('fixedListWrapNewline');
-  if (fixedNewlineCount > 0){
-    wrapN.style.display = 'block';
-    document.getElementById('fixedListTextNewline').textContent = fixedNewlineIds.join(', ');
-  }else{
-    wrapN.style.display = 'none';
-  }
+  const anomalyCount = rows.filter(r => r._flags.anomaly).length;
+  const fixedCount = rows.filter(r => !r._flags.anomaly && fixes.some(f => r._flags[f.key])).length;
+  const avisoCount = rows.filter(r => !r._flags.anomaly && !fixes.some(f => r._flags[f.key]) && avisos.some(a => r._flags[a.key])).length;
+  const cleanCount = rows.length - anomalyCount - fixedCount - avisoCount;
 
-  const wrapC = document.getElementById('fixedListWrapCantidad');
-  if (fixedCantidadCount > 0){
-    wrapC.style.display = 'block';
-    document.getElementById('fixedListTextCantidad').textContent = fixedCantidadIds.join(', ');
-  }else{
-    wrapC.style.display = 'none';
-  }
-
-  const wrapA = document.getElementById('anomalyWrap');
+  const statRow = document.getElementById(mod.id + '-statRow');
+  let statHtml = `
+    <div class="stat"><div class="n">${rows.length.toLocaleString('es-AR')}</div><div class="l">Filas de datos</div></div>
+    <div class="stat"><div class="n">${headers.length}</div><div class="l">Columnas</div></div>`;
+  fixes.forEach(f => {
+    const c = rows.filter(r => r._flags[f.key]).length;
+    statHtml += `<div class="stat fixed"><div class="n">${c}</div><div class="l">${escapeHtml(f.label)}</div></div>`;
+  });
+  avisos.forEach(a => {
+    const c = rows.filter(r => r._flags[a.key]).length;
+    statHtml += `<div class="stat aviso"><div class="n">${c}</div><div class="l">${escapeHtml(a.label)}</div></div>`;
+  });
   if (anomalyCount > 0){
-    wrapA.style.display = 'block';
-    document.getElementById('anomalyListText').textContent = anomalyIds.join(', ');
-  }else{
-    wrapA.style.display = 'none';
+    statHtml += `<div class="stat anomaly"><div class="n">${anomalyCount}</div><div class="l">Filas con un problema no reconocido</div></div>`;
   }
+  statRow.innerHTML = statHtml;
 
-  const wrapE = document.getElementById('estadoWrap');
-  if (estadoCount > 0){
-    wrapE.style.display = 'block';
-    document.getElementById('estadoListText').textContent = estadoIds.join(', ');
-  }else{
-    wrapE.style.display = 'none';
+  const segs = [
+    { n: cleanCount, cls: 'seg-ok', label: 'Limpias' },
+    { n: fixedCount, cls: 'seg-warn', label: 'Corregidas' },
+    { n: avisoCount, cls: 'seg-info', label: 'Avisos' },
+    { n: anomalyCount, cls: 'seg-danger', label: 'Revisar' }
+  ].filter(s => s.n > 0);
+  const total = rows.length || 1;
+  const bars = segs.map(s => `<div class="health-seg ${s.cls}" style="width:${(s.n / total * 100).toFixed(2)}%" title="${s.label}: ${s.n}"></div>`).join('');
+  const legend = segs.map(s => `<span><i class="${s.cls}"></i>${s.label} ${s.n}</span>`).join('');
+  document.getElementById(mod.id + '-healthWrap').innerHTML = `<div class="health-bar">${bars}</div><div class="health-legend">${legend}</div>`;
+
+  let detailsHtml = '';
+  fixes.forEach(f => {
+    const ids = rows.filter(r => r._flags[f.key]).map(r => r._id);
+    if (ids.length){
+      detailsHtml += `<details class="aviso-details fixed"><summary>${escapeHtml(f.label)} (${ids.length})</summary><div class="ids">${ids.map(escapeHtml).join(', ')}</div></details>`;
+    }
+  });
+  avisos.forEach(a => {
+    const ids = rows.filter(r => r._flags[a.key]).map(r => r._id);
+    if (ids.length){
+      detailsHtml += `<details class="aviso-details aviso"><summary>${escapeHtml(a.label)} (${ids.length})</summary><div class="ids">${ids.map(escapeHtml).join(', ')}</div></details>`;
+    }
+  });
+  if (anomalyCount > 0){
+    const ids = rows.filter(r => r._flags.anomaly).map(r => r._id);
+    detailsHtml += `<details class="aviso-details anomaly"><summary>⚠ Con un problema no reconocido, sin modificar (${ids.length})</summary><div class="ids">${ids.map(escapeHtml).join(', ')}</div></details>`;
   }
+  document.getElementById(mod.id + '-detailsWrap').innerHTML = detailsHtml;
 
-  const wrapD = document.getElementById('duplicadosWrap');
-  if (duplicadoCount > 0){
-    wrapD.style.display = 'block';
-    document.getElementById('duplicadosListText').textContent = duplicadoIds.join(', ');
-  }else{
-    wrapD.style.display = 'none';
-  }
-
-  const theadRow = document.getElementById('theadRow');
-  theadRow.innerHTML = headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('');
-
-  renderTableBody();
+  document.getElementById(mod.id + '-theadRow').innerHTML = headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('');
+  renderTableBody(mod);
 }
 
-function renderTableBody(){
-  const { headers, rows } = PARSED;
-  const search = document.getElementById('search').value.trim().toLowerCase();
-  const onlyFixed = document.getElementById('onlyFixed').checked;
-  const destIdx = headers.indexOf('DESTINATARIO');
-  const cantidadIdx = headers.indexOf('CANTIDAD');
-  const estadoIdx = headers.indexOf('ESTADO');
+function renderTableBody(mod){
+  const P = mod.state.parsed;
+  const { headers, rows, fixes, avisos } = P;
+  const search = document.getElementById(mod.id + '-search').value.trim().toLowerCase();
+  const onlyFixed = document.getElementById(mod.id + '-onlyFixed').checked;
 
   let filtered = rows;
-  if (onlyFixed) filtered = filtered.filter(r => r.__fixed || r.__anomaly || r.__estadoAviso || r.__duplicado);
+  if (onlyFixed){
+    filtered = filtered.filter(r => r._flags.anomaly || fixes.some(f => r._flags[f.key]) || avisos.some(a => r._flags[a.key]));
+  }
   if (search){
     filtered = filtered.filter(r => headers.some(h => (r[h] || '').toLowerCase().includes(search)));
   }
 
-  const tbody = document.getElementById('tbody');
+  const tbody = document.getElementById(mod.id + '-tbody');
   const MAX_RENDER = 1000;
   const toRender = filtered.slice(0, MAX_RENDER);
 
+  const colTags = {}; // colIndex -> [{key, tagText, cls}]
+  function addTag(colName, tagText, cls){
+    const idx = headers.indexOf(colName);
+    if (idx < 0) return;
+    (colTags[idx] = colTags[idx] || []).push({ tagText, cls });
+  }
+
   tbody.innerHTML = toRender.map(r => {
     let cls = '';
-    if (r.__anomaly) cls = ' class="anomaly-row"';
-    else if (r.__fixed) cls = ' class="fixed-row"';
-    else if (r.__estadoAviso || r.__duplicado) cls = ' class="info-row"';
+    if (r._flags.anomaly) cls = ' class="anomaly-row"';
+    else if (fixes.some(f => r._flags[f.key])) cls = ' class="fixed-row"';
+    else if (avisos.some(a => r._flags[a.key])) cls = ' class="info-row"';
+
     const cells = headers.map((h, i) => {
       let val = escapeHtml(r[h] || '');
-      if (i === destIdx && r.__fixedNewline) val += '<span class="tag">salto de línea corregido</span>';
-      if (i === cantidadIdx && r.__fixedCantidad) val += '<span class="tag">columna corregida</span>';
-      if (i === 0 && r.__anomaly) val += '<span class="tag danger">revisar</span>';
-      if (i === estadoIdx && r.__estadoAviso) val += '<span class="tag info">' + (r[h] ? 'no cerrada' : 'sin estado') + '</span>';
-      if (i === 0 && r.__duplicado) val += '<span class="tag info">duplicada</span>';
+      fixes.forEach(f => {
+        if (h === f.col && r._flags[f.key]) val += `<span class="tag">${escapeHtml(f.tagText(r))}</span>`;
+      });
+      avisos.forEach(a => {
+        if (h === a.col && r._flags[a.key]) val += `<span class="tag info">${escapeHtml(a.tagText(r))}</span>`;
+      });
+      if (i === 0 && r._flags.anomaly) val += '<span class="tag danger">revisar</span>';
       return '<td>' + val + '</td>';
     }).join('');
     return '<tr' + cls + '>' + cells + '</tr>';
   }).join('');
 
-  const info = document.getElementById('rowCountInfo');
+  const info = document.getElementById(mod.id + '-rowCountInfo');
   if (filtered.length > MAX_RENDER){
-    info.textContent = 'Mostrando ' + MAX_RENDER.toLocaleString('es-AR') + ' de ' + filtered.length.toLocaleString('es-AR') + ' filas (refiná la búsqueda para ver el resto)';
+    info.textContent = 'Mostrando ' + MAX_RENDER.toLocaleString('es-AR') + ' de ' + filtered.length.toLocaleString('es-AR') + ' filas';
   }else{
     info.textContent = filtered.length.toLocaleString('es-AR') + ' filas';
   }
 }
 
-function escapeHtml(s){
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-}
-
-function downloadCleaned(){
-  if (!PARSED) return;
-  const { headers, rows } = PARSED;
-  const dateColIdx = new Set(headers.map((h,i) => DATE_COLS.has(h) ? i : -1).filter(i => i >= 0));
+function downloadCleaned(mod){
+  const P = mod.state.parsed;
+  if (!P) return;
+  const { headers, rows } = P;
+  const dateColIdx = new Set(headers.map((h, i) => mod.dateCols.has(h) ? i : -1).filter(i => i >= 0));
   const aoa = [headers];
   rows.forEach(r => {
     const line = headers.map(h => {
       const v = r[h] || '';
-      if (NUMERIC_COLS.has(h)) return parseArgNumber(v);
-      if (DATE_COLS.has(h)){ const s = parseArgDate(v); return s === null ? v : s; }
+      if (mod.numericCols.has(h)) return parseArgNumber(v);
+      if (mod.dateCols.has(h)){ const s = parseArgDate(v); return s === null ? v : s; }
       return v;
     });
     aoa.push(line);
   });
 
   const ws = XLSX.utils.aoa_to_sheet(aoa);
-  // Date columns are written as plain serial numbers (timezone-independent); mark them
-  // with a date number format so Excel displays/sorts them as real dates.
   for (let r = 1; r < aoa.length; r++){
     dateColIdx.forEach(c => {
       const ref = XLSX.utils.encode_cell({ r, c });
@@ -681,36 +824,18 @@ function downloadCleaned(){
       if (cell && cell.t === 'n') cell.z = 'dd/mm/yyyy';
     });
   }
-  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:aoa.length-1, c:headers.length-1} }) };
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: headers.length - 1 } }) };
   ws['!cols'] = headers.map(h => ({ wch: Math.min(Math.max(h.length, 12), 40) }));
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Notas de Salida');
+  XLSX.utils.book_append_sheet(wb, ws, mod.sheetName);
 
-  const today = new Date();
-  const stamp = today.toISOString().slice(0,10);
-  const baseName = (SOURCE_NAME || 'notas_salida').replace(/\.[^.]+$/, '');
+  const stamp = new Date().toISOString().slice(0, 10);
+  const baseName = (mod.state.sourceName || mod.fileBase).replace(/\.[^.]+$/, '');
   XLSX.writeFile(wb, baseName + '_depurado_' + stamp + '.xlsx');
 }
 
-const dropzone = document.getElementById('dropzone');
-const fileInput = document.getElementById('fileInput');
-
-dropzone.addEventListener('click', () => fileInput.click());
-dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
-dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
-dropzone.addEventListener('drop', e => {
-  e.preventDefault();
-  dropzone.classList.remove('drag');
-  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-});
-fileInput.addEventListener('change', e => {
-  if (e.target.files.length) handleFile(e.target.files[0]);
-});
-
-document.getElementById('search').addEventListener('input', renderTableBody);
-document.getElementById('onlyFixed').addEventListener('change', renderTableBody);
-document.getElementById('downloadBtn').addEventListener('click', downloadCleaned);
+buildShell();
 </script>
 </body>
 </html>

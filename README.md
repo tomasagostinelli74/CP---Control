@@ -1,82 +1,61 @@
-# Depurador de Notas de Salida — Contabilidad UADE
+# Depurador de Excels — Contabilidad UADE
 
-Herramienta HTML de un solo archivo (sin backend, sin login) para depurar la exportación
-de "Notas de Salida" antes de que el sector de contabilidad la use.
+Sistema HTML de un solo archivo (sin backend, sin login) para depurar las exportaciones
+que usa el sector de contabilidad. Cada tipo de reporte es un **módulo** (una pestaña):
+sube su propio archivo, corre su propia lógica de detección/corrección, y su resultado
+queda disponible aunque se pase a otra pestaña — subir un archivo en un módulo nunca
+borra lo que ya se depuró en otro.
 
-## El problema que resuelve
+## Módulos
 
-El archivo que exporta el sistema (`Notas_de_Salida_XXXXXXX.xls`) **no es un binario Excel
-real**: es texto plano separado por tabs (`\t`), codificado en `windows-1252`, con filas
-terminadas en `\r\n`. Tiene 5 líneas de metadata (título + rango de fechas) antes del
-encabezado real, que está en la línea 6.
+### Notas de Salida
 
-Algunas filas (en el archivo de muestra, 51 de 2441 = ~2%) tienen un **salto de línea
-(`\n`) incrustado dentro del campo `DESTINATARIO`** — un defecto de carga de datos en el
-sistema de origen (alguien escribió un enter de más en un nombre). Cuando esa fila se abre
-o procesa con una herramienta que separa filas por *cualquier* salto de línea en vez de por
-el verdadero fin de fila `\r\n`, el `\n` incrustado corta la fila en dos: la primera mitad
-se queda con las columnas A–D (de `CODIGOPRODUCTO` en adelante, vacío), y el resto de los
-datos (en verdad las columnas E–N) terminan como una fila "fantasma" con la columna A vacía
-y los datos corridos a B–K. Es exactamente el patrón de filas rotas que reportó contabilidad.
+El archivo (`Notas_de_Salida_XXXXXXX.xls`) **no es un binario Excel real**: es texto
+plano separado por tabs, `windows-1252`, filas por `\r\n`, con 5 líneas de metadata antes
+del encabezado (línea 6). Dos defectos de origen, ambos causados por caracteres
+incrustados en campos de texto libre por carga de datos:
 
-**La corrección de raíz**: en vez de detectar y "reconstruir" filas ya rotas (heurística
-propensa a error), esta herramienta parsea el archivo original correctamente — separando
-filas *solo* por `\r\n` y campos por `\t` — con lo cual el `\n` incrustado nunca llega a
-partir una fila. El salto de línea se reemplaza por un espacio dentro del campo, se recorta,
-y la fila queda íntegra desde el primer parseo. No hay ambigüedad ni adivinación.
+- **Salto de línea (`\n`) incrustado en `DESTINATARIO`** (~2% de las filas): si algo
+  separa filas por *cualquier* salto de línea en vez de por el verdadero fin de fila
+  `\r\n`, corta la fila en dos. Corregido de raíz parseando por `\r\n` únicamente — el
+  `\n` nunca llega a partir nada, solo se reemplaza por un espacio dentro del campo.
+- **Tab incrustado justo antes de `CANTIDAD`**: produce un campo vacío fantasma que
+  corre todo lo posterior una columna a la derecha. Se detecta por longitud de fila y se
+  corrige eliminando el campo fantasma. Verificado con `CANTIDAD × PRECUNIT =
+  TOTALSINDESCUENTOS` en las filas afectadas.
 
-**Segundo defecto, mismo mecanismo distinto lugar**: otro subconjunto de filas tiene un
-**tab incrustado justo antes de `CANTIDAD`** (columna H). Esto no rompe la fila en dos (no
-hay salto de línea de por medio), pero sí produce un campo vacío "fantasma" exactamente en
-la posición de `CANTIDAD`, corriendo todo lo que sigue (`PRECUNIT`, `TOTALSINDESCUENTOS`,
-`CODIGO_CUENTA`, `DESC_CUENTA`, `UBICACION_ENTREGA`, `ESTADO`, `DETALLE`) una columna a la
-derecha — el patrón "I a O corrido una columna" que reportó contabilidad con los ejemplos
-`00018794`/`00018828`. Se detecta por longitud de fila (un campo más de lo esperado, con
-`CANTIDAD` vacío) y se corrige eliminando ese campo fantasma, sin heurística de "adivinar
-con la fila siguiente". Verificado en las 11 filas reales que tienen este defecto: la
-aritmética `CANTIDAD × PRECUNIT = TOTALSINDESCUENTOS` cierra exacto en las 11 después de
-la corrección.
+Avisos de contenido (no son bugs, son datos reales a revisar): `ESTADO` distinto de
+`CERRADO`, y filas 100% duplicadas.
 
-**Filas con una forma no reconocida** (ninguno de los dos patrones anteriores) se marcan
-como "anomalía" — se muestran resaltadas en rojo, con su N° de Nota de Salida, y **no se
-modifican**: quedan para revisión manual en vez de aplicarles una corrección a ciegas.
+### Requerimientos de Gastos
 
-**Dos avisos de contenido más** (no son bugs de parseo, son datos reales del archivo que
-conviene que contabilidad vea antes de tratar cada fila como un gasto cerrado):
-- **`ESTADO` distinto de `CERRADO`** (vacío o `ABIERTO`) — se resaltan en celeste con un
-  tag "ⓘ", sin modificar nada.
-- **Filas 100% duplicadas** (mismas 15 columnas, mismo N° de nota) — mismo tratamiento
-  visual. Puede ser un pedido legítimo repetido o un glitch de exportación; queda a
-  criterio de quien revisa.
+Mismo formato de archivo (texto por tabs, 6 líneas de metadata, encabezado en la línea 7,
+34 columnas reales). El defecto acá es más variado: varios campos de texto libre
+(`NOTA`/`DETALLE`, `DATOSPROVEEDOR`, `DETALLE_ITEM`/`OBSERVACIONES`) pueden traer tabs
+incrustados (contenido pegado desde otro lado), fragmentando la fila en más columnas de
+las que corresponden — y más de uno puede fragmentarse a la vez en la misma fila.
 
-## Qué hace
+Se reconstruye ubicando **anclas confiables** que nunca vienen de texto libre: `SINPARTIDA`
+(siempre `SI`/`NO`), el bloque de 3 `SI`/`NO` seguidos (`ESCHEQUERAPIDO`, `COMPRAWEB`,
+`COMPRA_ALTO_MONTO`), y `CODIGOPROD` (patrón fijo de 21 caracteres, 3 letras + 18 dígitos).
+Todo lo que sobra entre anclas se reabsorbe en el campo de texto libre correspondiente,
+uniendo con espacios. Si las anclas no se pueden ubicar de forma consistente, la fila
+queda marcada como anomalía sin modificarla — nunca se fuerza una reconstrucción dudosa.
+Verificado contra las 13 filas reales con este defecto en el archivo de muestra.
 
-1. **Sube el archivo** (`.xls`, tal cual lo entrega el sistema).
-2. Elimina las primeras 5 filas de metadata; la fila 6 pasa a ser el encabezado real.
-3. Detecta y corrige los campos con salto de línea incrustado en `DESTINATARIO`, y las
-   filas con el tab incrustado antes de `CANTIDAD` (cada una marcada y contada por
-   separado en la vista previa, con la lista de N° de Nota de Salida afectados). Cualquier
-   otra forma de fila inesperada queda marcada como anomalía sin tocar sus datos.
-4. Muestra la tabla depurada en el navegador (con buscador y filtro "ver solo filas
-   corregidas / con problema").
-5. Permite **exportar** el resultado como `.xlsx` (encabezado + filtro automático), con:
-   - `NOTASALIDA`, `CODIGO_CUENTA`, `CODIGOPRODUCTO` como texto (se preservan ceros a la
-     izquierda).
-   - `FECHA_TRANSACCION` como fecha real de Excel (`dd/mm/yyyy`).
-   - `CANTIDAD`, `PRECUNIT`, `TOTALSINDESCUENTOS` como números reales (coma decimal
-     argentina convertida a punto), para poder sumarlos/analizarlos directamente en Excel.
+## Diseño común a todos los módulos
 
-## Alcance actual / próximos pasos
-
-Resuelve los dos patrones de corrupción conocidos hasta ahora (salto de línea en
-`DESTINATARIO`, tab incrustado antes de `CANTIDAD`). Si aparece un tercer patrón, el
-mecanismo de "anomalía" ya deja esas filas visibles y sin tocar — el próximo paso sería
-agregar su detección específica siguiendo el mismo enfoque (parsear la causa real, no
-reconstruir a ciegas).
-
-Si en algún momento el archivo de entrada cambia (otro layout, otra codificación), avisar
-para ajustar el parser — está escrito para este layout específico, no es un parser
-genérico de Excel.
+- Barra de salud compacta (limpias / corregidas / avisos / a revisar) en vez de texto.
+- Los N° de fila afectados van en listas colapsables (`<details>`), no como bloques de
+  texto siempre visibles.
+- Exportación a `.xlsx` con encabezado + filtro automático: columnas numéricas reales
+  (coma argentina → punto), fechas reales (`dd/mm/yyyy`, serial calculado con aritmética
+  UTC pura para no depender de la zona horaria del navegador), y códigos/IDs con ceros a
+  la izquierda preservados como texto.
+- Agregar un módulo nuevo = un `parseX(text)` que devuelva `{headers, rows, fixes,
+  avisos}` (cada fila con `_id` y `_flags`) + una entrada en `MODULES` — el resto (tabs,
+  stats, tabla, exportación, persistencia entre pestañas) es genérico y no hay que
+  tocarlo.
 
 ## Desarrollo local
 
