@@ -22,6 +22,8 @@
     --warn-bg:#fbf1dc;
     --danger:#b3261e;
     --danger-bg:#fbeceb;
+    --info:#1d5fa8;
+    --info-bg:#e9f1fb;
     --radius:12px;
   }
   *{box-sizing:border-box;}
@@ -244,6 +246,8 @@
   tbody tr.fixed-row:hover{background:#f7e9c8;}
   tbody tr.anomaly-row{background:var(--danger-bg);}
   tbody tr.anomaly-row:hover{background:#f7d9d6;}
+  tbody tr.info-row{background:var(--info-bg);}
+  tbody tr.info-row:hover{background:#d9e8f8;}
   .tag{
     display:inline-block;
     font-size:10.5px;
@@ -256,6 +260,7 @@
     vertical-align:middle;
   }
   .tag.danger{background:var(--danger);}
+  .tag.info{background:var(--info);}
   #rowCountInfo{
     font-size:12.5px;
     color:var(--text-muted);
@@ -276,6 +281,8 @@
   .fixed-list b{color:var(--warn);}
   .fixed-list.anomaly{color:var(--danger);}
   .fixed-list.anomaly b{color:var(--danger);}
+  .fixed-list.info{color:var(--info);}
+  .fixed-list.info b{color:var(--info);}
 </style>
 </head>
 <body>
@@ -325,6 +332,14 @@
         <div class="n" id="statFixedCantidad">0</div>
         <div class="l">Filas con columna corrida corregida (desde CANTIDAD)</div>
       </div>
+      <div class="stat" style="border-color:var(--info)">
+        <div class="n" id="statEstado" style="color:var(--info)">0</div>
+        <div class="l">Filas con ESTADO distinto de CERRADO</div>
+      </div>
+      <div class="stat" style="border-color:var(--info)">
+        <div class="n" id="statDuplicados" style="color:var(--info)">0</div>
+        <div class="l">Filas duplicadas exactas</div>
+      </div>
     </div>
 
     <div id="fixedListWrapNewline" style="display:none">
@@ -342,11 +357,21 @@
         <b>⚠ N° de nota de salida con un problema NO reconocido (revisar a mano, no se modificaron):</b> <span id="anomalyListText"></span>
       </div>
     </div>
+    <div id="estadoWrap" style="display:none">
+      <div class="fixed-list info">
+        <b>ⓘ N° de nota de salida con ESTADO vacío o distinto de CERRADO (dato real del archivo, no un error de parseo):</b> <span id="estadoListText"></span>
+      </div>
+    </div>
+    <div id="duplicadosWrap" style="display:none">
+      <div class="fixed-list info">
+        <b>ⓘ N° de nota de salida con una fila 100% duplicada (mismo producto, mismo importe, repetido):</b> <span id="duplicadosListText"></span>
+      </div>
+    </div>
 
     <div class="toolbar">
       <div class="left">
         <input type="text" id="search" placeholder="Buscar en cualquier columna…">
-        <label class="chk"><input type="checkbox" id="onlyFixed"> Ver solo filas corregidas / con problema</label>
+        <label class="chk"><input type="checkbox" id="onlyFixed"> Ver solo filas para revisar</label>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
         <span id="rowCountInfo"></span>
@@ -458,11 +483,36 @@ function parseNotasSalida(text){
     rows.push(row);
   }
 
+  // Content-level flags, distinct from the structural fixes above: these are real data
+  // in the file, not parsing defects, so rows are only marked — never modified.
+  const estadoIdx = headers.indexOf('ESTADO');
+  const estadoIds = [];
+  if (estadoIdx >= 0){
+    rows.forEach(r => {
+      r.__estadoAviso = r['ESTADO'] !== 'CERRADO';
+      if (r.__estadoAviso) estadoIds.push(r['NOTASALIDA'] || '(sin número)');
+    });
+  }
+
+  const dupCounts = new Map();
+  rows.forEach(r => {
+    const key = headers.map(h => r[h]).join('');
+    dupCounts.set(key, (dupCounts.get(key) || 0) + 1);
+  });
+  const duplicadoIds = [];
+  rows.forEach(r => {
+    const key = headers.map(h => r[h]).join('');
+    r.__duplicado = dupCounts.get(key) > 1;
+    if (r.__duplicado) duplicadoIds.push(r['NOTASALIDA'] || '(sin número)');
+  });
+
   return {
     headers, rows,
     fixedNewlineCount: fixedNewlineIds.length, fixedNewlineIds,
     fixedCantidadCount: fixedCantidadIds.length, fixedCantidadIds,
-    anomalyCount: anomalyIds.length, anomalyIds
+    anomalyCount: anomalyIds.length, anomalyIds,
+    estadoCount: estadoIds.length, estadoIds,
+    duplicadoCount: duplicadoIds.length, duplicadoIds
   };
 }
 
@@ -500,13 +550,15 @@ function hideError(){
 }
 
 function renderResults(){
-  const { headers, rows, fixedNewlineCount, fixedNewlineIds, fixedCantidadCount, fixedCantidadIds, anomalyCount, anomalyIds } = PARSED;
+  const { headers, rows, fixedNewlineCount, fixedNewlineIds, fixedCantidadCount, fixedCantidadIds, anomalyCount, anomalyIds, estadoCount, estadoIds, duplicadoCount, duplicadoIds } = PARSED;
   document.getElementById('results').style.display = 'block';
   document.getElementById('fileNameLabel').textContent = 'Archivo: ' + SOURCE_NAME;
   document.getElementById('statTotal').textContent = rows.length.toLocaleString('es-AR');
   document.getElementById('statCols').textContent = headers.length;
   document.getElementById('statFixedNewline').textContent = fixedNewlineCount;
   document.getElementById('statFixedCantidad').textContent = fixedCantidadCount;
+  document.getElementById('statEstado').textContent = estadoCount;
+  document.getElementById('statDuplicados').textContent = duplicadoCount;
 
   const wrapN = document.getElementById('fixedListWrapNewline');
   if (fixedNewlineCount > 0){
@@ -532,6 +584,22 @@ function renderResults(){
     wrapA.style.display = 'none';
   }
 
+  const wrapE = document.getElementById('estadoWrap');
+  if (estadoCount > 0){
+    wrapE.style.display = 'block';
+    document.getElementById('estadoListText').textContent = estadoIds.join(', ');
+  }else{
+    wrapE.style.display = 'none';
+  }
+
+  const wrapD = document.getElementById('duplicadosWrap');
+  if (duplicadoCount > 0){
+    wrapD.style.display = 'block';
+    document.getElementById('duplicadosListText').textContent = duplicadoIds.join(', ');
+  }else{
+    wrapD.style.display = 'none';
+  }
+
   const theadRow = document.getElementById('theadRow');
   theadRow.innerHTML = headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('');
 
@@ -544,9 +612,10 @@ function renderTableBody(){
   const onlyFixed = document.getElementById('onlyFixed').checked;
   const destIdx = headers.indexOf('DESTINATARIO');
   const cantidadIdx = headers.indexOf('CANTIDAD');
+  const estadoIdx = headers.indexOf('ESTADO');
 
   let filtered = rows;
-  if (onlyFixed) filtered = filtered.filter(r => r.__fixed || r.__anomaly);
+  if (onlyFixed) filtered = filtered.filter(r => r.__fixed || r.__anomaly || r.__estadoAviso || r.__duplicado);
   if (search){
     filtered = filtered.filter(r => headers.some(h => (r[h] || '').toLowerCase().includes(search)));
   }
@@ -556,12 +625,17 @@ function renderTableBody(){
   const toRender = filtered.slice(0, MAX_RENDER);
 
   tbody.innerHTML = toRender.map(r => {
-    const cls = r.__anomaly ? ' class="anomaly-row"' : (r.__fixed ? ' class="fixed-row"' : '');
+    let cls = '';
+    if (r.__anomaly) cls = ' class="anomaly-row"';
+    else if (r.__fixed) cls = ' class="fixed-row"';
+    else if (r.__estadoAviso || r.__duplicado) cls = ' class="info-row"';
     const cells = headers.map((h, i) => {
       let val = escapeHtml(r[h] || '');
       if (i === destIdx && r.__fixedNewline) val += '<span class="tag">salto de línea corregido</span>';
       if (i === cantidadIdx && r.__fixedCantidad) val += '<span class="tag">columna corregida</span>';
       if (i === 0 && r.__anomaly) val += '<span class="tag danger">revisar</span>';
+      if (i === estadoIdx && r.__estadoAviso) val += '<span class="tag info">' + (r[h] ? 'no cerrada' : 'sin estado') + '</span>';
+      if (i === 0 && r.__duplicado) val += '<span class="tag info">duplicada</span>';
       return '<td>' + val + '</td>';
     }).join('');
     return '<tr' + cls + '>' + cells + '</tr>';
