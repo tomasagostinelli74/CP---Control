@@ -242,6 +242,8 @@
   tbody tr:hover{background:#f6f9fc;}
   tbody tr.fixed-row{background:var(--warn-bg);}
   tbody tr.fixed-row:hover{background:#f7e9c8;}
+  tbody tr.anomaly-row{background:var(--danger-bg);}
+  tbody tr.anomaly-row:hover{background:#f7d9d6;}
   .tag{
     display:inline-block;
     font-size:10.5px;
@@ -253,6 +255,7 @@
     margin-left:6px;
     vertical-align:middle;
   }
+  .tag.danger{background:var(--danger);}
   #rowCountInfo{
     font-size:12.5px;
     color:var(--text-muted);
@@ -271,6 +274,8 @@
     word-break:break-word;
   }
   .fixed-list b{color:var(--warn);}
+  .fixed-list.anomaly{color:var(--danger);}
+  .fixed-list.anomaly b{color:var(--danger);}
 </style>
 </head>
 <body>
@@ -283,7 +288,7 @@
       <p>Contabilidad · UADE</p>
     </div>
   </div>
-  <span class="badge">Corrección automática de saltos de línea incrustados</span>
+  <span class="badge">Corrección automática de tabs / saltos de línea incrustados</span>
 </header>
 
 <main>
@@ -313,21 +318,35 @@
         <div class="l">Columnas</div>
       </div>
       <div class="stat fixed">
-        <div class="n" id="statFixed">0</div>
+        <div class="n" id="statFixedNewline">0</div>
         <div class="l">Filas con salto de línea corregido en DESTINATARIO</div>
+      </div>
+      <div class="stat fixed">
+        <div class="n" id="statFixedCantidad">0</div>
+        <div class="l">Filas con columna corrida corregida (desde CANTIDAD)</div>
       </div>
     </div>
 
-    <div id="fixedListWrap" style="display:none">
+    <div id="fixedListWrapNewline" style="display:none">
       <div class="fixed-list">
-        <b>N° de nota de salida corregidas:</b> <span id="fixedListText"></span>
+        <b>N° de nota de salida corregidas (salto de línea):</b> <span id="fixedListTextNewline"></span>
+      </div>
+    </div>
+    <div id="fixedListWrapCantidad" style="display:none">
+      <div class="fixed-list">
+        <b>N° de nota de salida corregidas (columna corrida):</b> <span id="fixedListTextCantidad"></span>
+      </div>
+    </div>
+    <div id="anomalyWrap" style="display:none">
+      <div class="fixed-list anomaly">
+        <b>⚠ N° de nota de salida con un problema NO reconocido (revisar a mano, no se modificaron):</b> <span id="anomalyListText"></span>
       </div>
     </div>
 
     <div class="toolbar">
       <div class="left">
         <input type="text" id="search" placeholder="Buscar en cualquier columna…">
-        <label class="chk"><input type="checkbox" id="onlyFixed"> Ver solo filas corregidas</label>
+        <label class="chk"><input type="checkbox" id="onlyFixed"> Ver solo filas corregidas / con problema</label>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
         <span id="rowCountInfo"></span>
@@ -379,18 +398,44 @@ function parseNotasSalida(text){
     throw new Error('El archivo tiene muy pocas filas — no parece una exportación de Notas de Salida completa.');
   }
   const headerLine = lines[HEADER_ROWS_TO_SKIP];
-  const headers = headerLine.split('\t').map(h => h.trim()).filter(h => h !== '');
+  const headers = headerLine.split('\t').map(h => h.trim());
+  if (headers.length && headers[headers.length - 1] === '') headers.pop();
   const missing = REQUIRED_HEADERS.filter(h => !headers.includes(h));
   if (missing.length){
     throw new Error('No se encontró el encabezado esperado en la fila 6 (faltan columnas: ' + missing.join(', ') + '). ¿Es el archivo correcto?');
   }
 
+  const cantidadIdx = headers.indexOf('CANTIDAD');
   const dataLines = lines.slice(HEADER_ROWS_TO_SKIP + 1).filter(l => l.trim() !== '');
   const rows = [];
-  const fixedIds = [];
+  const fixedNewlineIds = [];
+  const fixedCantidadIds = [];
+  const anomalyIds = [];
 
   for (const line of dataLines){
-    const rawFields = line.split('\t');
+    let rawFields = line.split('\t');
+    // Every row (broken or not) ends with one harmless trailing empty column, from a
+    // trailing tab in the source file — drop it before comparing lengths to headers.
+    if (rawFields.length > headers.length && rawFields[rawFields.length - 1] === ''){
+      rawFields = rawFields.slice(0, -1);
+    }
+
+    let fixedCantidadShift = false;
+    let anomaly = false;
+
+    // Second known defect: a stray embedded tab lands right before CANTIDAD, producing
+    // one extra empty field at CANTIDAD's position and pushing every field after it one
+    // column to the right. Dropping that phantom empty field realigns the rest of the
+    // row. Any other field-count mismatch is unrecognized — flagged, not guessed at.
+    if (rawFields.length !== headers.length){
+      if (rawFields.length === headers.length + 1 && cantidadIdx >= 0 && rawFields[cantidadIdx] === ''){
+        rawFields = rawFields.slice(0, cantidadIdx).concat(rawFields.slice(cantidadIdx + 1));
+        fixedCantidadShift = true;
+      }else{
+        anomaly = true;
+      }
+    }
+
     let hadNewline = false;
     const fields = rawFields.map(f => {
       if (f.indexOf('\n') !== -1 || f.indexOf('\r') !== -1){
@@ -401,12 +446,24 @@ function parseNotasSalida(text){
     });
     const row = {};
     headers.forEach((h, i) => { row[h] = fields[i] !== undefined ? fields[i] : ''; });
-    row.__fixed = hadNewline;
-    if (hadNewline) fixedIds.push(row['NOTASALIDA'] || '(sin número)');
+    row.__fixedNewline = hadNewline;
+    row.__fixedCantidad = fixedCantidadShift;
+    row.__anomaly = anomaly;
+    row.__fixed = hadNewline || fixedCantidadShift;
+
+    const nota = row['NOTASALIDA'] || '(sin número)';
+    if (hadNewline) fixedNewlineIds.push(nota);
+    if (fixedCantidadShift) fixedCantidadIds.push(nota);
+    if (anomaly) anomalyIds.push(nota);
     rows.push(row);
   }
 
-  return { headers, rows, fixedCount: fixedIds.length, fixedIds };
+  return {
+    headers, rows,
+    fixedNewlineCount: fixedNewlineIds.length, fixedNewlineIds,
+    fixedCantidadCount: fixedCantidadIds.length, fixedCantidadIds,
+    anomalyCount: anomalyIds.length, anomalyIds
+  };
 }
 
 async function handleFile(file){
@@ -443,19 +500,36 @@ function hideError(){
 }
 
 function renderResults(){
-  const { headers, rows, fixedCount, fixedIds } = PARSED;
+  const { headers, rows, fixedNewlineCount, fixedNewlineIds, fixedCantidadCount, fixedCantidadIds, anomalyCount, anomalyIds } = PARSED;
   document.getElementById('results').style.display = 'block';
   document.getElementById('fileNameLabel').textContent = 'Archivo: ' + SOURCE_NAME;
   document.getElementById('statTotal').textContent = rows.length.toLocaleString('es-AR');
   document.getElementById('statCols').textContent = headers.length;
-  document.getElementById('statFixed').textContent = fixedCount;
+  document.getElementById('statFixedNewline').textContent = fixedNewlineCount;
+  document.getElementById('statFixedCantidad').textContent = fixedCantidadCount;
 
-  const wrap = document.getElementById('fixedListWrap');
-  if (fixedCount > 0){
-    wrap.style.display = 'block';
-    document.getElementById('fixedListText').textContent = fixedIds.join(', ');
+  const wrapN = document.getElementById('fixedListWrapNewline');
+  if (fixedNewlineCount > 0){
+    wrapN.style.display = 'block';
+    document.getElementById('fixedListTextNewline').textContent = fixedNewlineIds.join(', ');
   }else{
-    wrap.style.display = 'none';
+    wrapN.style.display = 'none';
+  }
+
+  const wrapC = document.getElementById('fixedListWrapCantidad');
+  if (fixedCantidadCount > 0){
+    wrapC.style.display = 'block';
+    document.getElementById('fixedListTextCantidad').textContent = fixedCantidadIds.join(', ');
+  }else{
+    wrapC.style.display = 'none';
+  }
+
+  const wrapA = document.getElementById('anomalyWrap');
+  if (anomalyCount > 0){
+    wrapA.style.display = 'block';
+    document.getElementById('anomalyListText').textContent = anomalyIds.join(', ');
+  }else{
+    wrapA.style.display = 'none';
   }
 
   const theadRow = document.getElementById('theadRow');
@@ -468,9 +542,11 @@ function renderTableBody(){
   const { headers, rows } = PARSED;
   const search = document.getElementById('search').value.trim().toLowerCase();
   const onlyFixed = document.getElementById('onlyFixed').checked;
+  const destIdx = headers.indexOf('DESTINATARIO');
+  const cantidadIdx = headers.indexOf('CANTIDAD');
 
   let filtered = rows;
-  if (onlyFixed) filtered = filtered.filter(r => r.__fixed);
+  if (onlyFixed) filtered = filtered.filter(r => r.__fixed || r.__anomaly);
   if (search){
     filtered = filtered.filter(r => headers.some(h => (r[h] || '').toLowerCase().includes(search)));
   }
@@ -480,10 +556,12 @@ function renderTableBody(){
   const toRender = filtered.slice(0, MAX_RENDER);
 
   tbody.innerHTML = toRender.map(r => {
-    const cls = r.__fixed ? ' class="fixed-row"' : '';
+    const cls = r.__anomaly ? ' class="anomaly-row"' : (r.__fixed ? ' class="fixed-row"' : '');
     const cells = headers.map((h, i) => {
       let val = escapeHtml(r[h] || '');
-      if (i === 3 && r.__fixed) val += '<span class="tag">corregida</span>';
+      if (i === destIdx && r.__fixedNewline) val += '<span class="tag">salto de línea corregido</span>';
+      if (i === cantidadIdx && r.__fixedCantidad) val += '<span class="tag">columna corregida</span>';
+      if (i === 0 && r.__anomaly) val += '<span class="tag danger">revisar</span>';
       return '<td>' + val + '</td>';
     }).join('');
     return '<tr' + cls + '>' + cells + '</tr>';
