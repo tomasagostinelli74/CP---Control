@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UADE · Depurador de Notas de Salida</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --navy:#0f2a4a;
+    --navy-dark:#0a1d33;
+    --blue:#1d5fa8;
+    --gold:#c9a24b;
+    --bg:#f4f6f9;
+    --card:#ffffff;
+    --line:#e1e6ed;
+    --text:#1c2733;
+    --text-muted:#5b6b7d;
+    --ok:#1c8a5a;
+    --ok-bg:#e8f6ef;
+    --warn:#b8860b;
+    --warn-bg:#fbf1dc;
+    --danger:#b3261e;
+    --danger-bg:#fbeceb;
+    --radius:12px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+    background:var(--bg);
+    color:var(--text);
+  }
+  header.app{
+    background:linear-gradient(135deg, var(--navy-dark), var(--navy) 60%, var(--blue));
+    color:#fff;
+    padding:28px 32px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  header.app .brand{
+    display:flex;
+    align-items:center;
+    gap:14px;
+  }
+  header.app .brand .dot{
+    width:10px;height:10px;border-radius:50%;
+    background:var(--gold);
+    box-shadow:0 0 0 4px rgba(201,162,75,.25);
+  }
+  header.app h1{
+    font-size:19px;
+    margin:0;
+    font-weight:600;
+    letter-spacing:.2px;
+  }
+  header.app p{
+    margin:2px 0 0;
+    font-size:13px;
+    color:rgba(255,255,255,.75);
+  }
+  header.app .badge{
+    font-size:12px;
+    background:rgba(255,255,255,.12);
+    border:1px solid rgba(255,255,255,.25);
+    padding:6px 12px;
+    border-radius:999px;
+    color:#fff;
+  }
+  main{
+    max-width:1180px;
+    margin:0 auto;
+    padding:28px 24px 60px;
+  }
+  .card{
+    background:var(--card);
+    border:1px solid var(--line);
+    border-radius:var(--radius);
+    padding:22px;
+    margin-bottom:20px;
+    box-shadow:0 1px 2px rgba(16,30,54,.04);
+  }
+  .card h2{
+    margin:0 0 6px;
+    font-size:15px;
+    font-weight:600;
+    color:var(--navy);
+  }
+  .card .sub{
+    margin:0 0 16px;
+    font-size:13px;
+    color:var(--text-muted);
+  }
+  #dropzone{
+    border:2px dashed #b9c4d3;
+    border-radius:var(--radius);
+    padding:40px 20px;
+    text-align:center;
+    cursor:pointer;
+    transition:.15s;
+    background:#fafbfc;
+  }
+  #dropzone.drag{
+    border-color:var(--blue);
+    background:#eef4fb;
+  }
+  #dropzone .icon{
+    font-size:34px;
+    margin-bottom:8px;
+  }
+  #dropzone .main-txt{
+    font-size:14.5px;
+    font-weight:600;
+    color:var(--navy);
+    margin-bottom:4px;
+  }
+  #dropzone .sub-txt{
+    font-size:12.5px;
+    color:var(--text-muted);
+  }
+  #fileInput{display:none;}
+  .btn{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    background:var(--blue);
+    color:#fff;
+    border:none;
+    padding:10px 18px;
+    border-radius:8px;
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    transition:.15s;
+  }
+  .btn:hover{background:#164e8c;}
+  .btn:disabled{background:#a9b6c4;cursor:not-allowed;}
+  .btn.secondary{
+    background:#fff;
+    color:var(--navy);
+    border:1px solid var(--line);
+  }
+  .btn.secondary:hover{background:#f1f4f8;}
+  #error{
+    display:none;
+    background:var(--danger-bg);
+    color:var(--danger);
+    border:1px solid #f3c7c3;
+    padding:12px 16px;
+    border-radius:8px;
+    font-size:13.5px;
+    margin-top:14px;
+  }
+  #results{display:none;}
+  .stat-row{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(160px,1fr));
+    gap:14px;
+    margin-bottom:6px;
+  }
+  .stat{
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:14px 16px;
+    background:#fbfcfd;
+  }
+  .stat .n{
+    font-size:24px;
+    font-weight:700;
+    color:var(--navy);
+    line-height:1.1;
+  }
+  .stat .l{
+    font-size:12px;
+    color:var(--text-muted);
+    margin-top:4px;
+  }
+  .stat.fixed .n{color:var(--warn);}
+  .toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px;
+    margin:18px 0 12px;
+  }
+  .toolbar .left{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  #search{
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:9px 12px;
+    font-size:13px;
+    width:260px;
+    max-width:60vw;
+  }
+  .chk{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    font-size:13px;
+    color:var(--text-muted);
+    user-select:none;
+    cursor:pointer;
+  }
+  .table-wrap{
+    border:1px solid var(--line);
+    border-radius:10px;
+    overflow:auto;
+    max-height:65vh;
+  }
+  table{
+    border-collapse:collapse;
+    width:100%;
+    font-size:12.5px;
+    white-space:nowrap;
+  }
+  thead th{
+    position:sticky;
+    top:0;
+    background:var(--navy);
+    color:#fff;
+    text-align:left;
+    padding:10px 12px;
+    font-weight:600;
+    z-index:1;
+  }
+  tbody td{
+    padding:8px 12px;
+    border-bottom:1px solid #eef1f5;
+    max-width:260px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  tbody tr:hover{background:#f6f9fc;}
+  tbody tr.fixed-row{background:var(--warn-bg);}
+  tbody tr.fixed-row:hover{background:#f7e9c8;}
+  .tag{
+    display:inline-block;
+    font-size:10.5px;
+    font-weight:700;
+    padding:2px 7px;
+    border-radius:999px;
+    background:var(--warn);
+    color:#fff;
+    margin-left:6px;
+    vertical-align:middle;
+  }
+  #rowCountInfo{
+    font-size:12.5px;
+    color:var(--text-muted);
+  }
+  footer{
+    text-align:center;
+    font-size:12px;
+    color:var(--text-muted);
+    padding:20px 0 40px;
+  }
+  .fixed-list{
+    font-size:12.5px;
+    color:var(--text-muted);
+    margin-top:10px;
+    line-height:1.6;
+    word-break:break-word;
+  }
+  .fixed-list b{color:var(--warn);}
+</style>
+</head>
+<body>
+
+<header class="app">
+  <div class="brand">
+    <span class="dot"></span>
+    <div>
+      <h1>Depurador de Notas de Salida</h1>
+      <p>Contabilidad · UADE</p>
+    </div>
+  </div>
+  <span class="badge">Corrección automática de saltos de línea incrustados</span>
+</header>
+
+<main>
+  <div class="card">
+    <h2>1. Subir archivo</h2>
+    <p class="sub">Subí el archivo de exportación tal cual lo entrega el sistema (el .xls con formato "Notas_de_Salida_...").</p>
+    <div id="dropzone">
+      <div class="icon">📄</div>
+      <div class="main-txt">Arrastrá el archivo acá o hacé clic para elegirlo</div>
+      <div class="sub-txt">Formato esperado: .xls (texto delimitado por tabs)</div>
+      <input type="file" id="fileInput" accept=".xls,.txt,.csv,.tsv">
+    </div>
+    <div id="error"></div>
+  </div>
+
+  <div class="card" id="results">
+    <h2>2. Resultado</h2>
+    <p class="sub" id="fileNameLabel"></p>
+
+    <div class="stat-row">
+      <div class="stat">
+        <div class="n" id="statTotal">0</div>
+        <div class="l">Filas de datos</div>
+      </div>
+      <div class="stat">
+        <div class="n" id="statCols">0</div>
+        <div class="l">Columnas</div>
+      </div>
+      <div class="stat fixed">
+        <div class="n" id="statFixed">0</div>
+        <div class="l">Filas con salto de línea corregido en DESTINATARIO</div>
+      </div>
+    </div>
+
+    <div id="fixedListWrap" style="display:none">
+      <div class="fixed-list">
+        <b>N° de nota de salida corregidas:</b> <span id="fixedListText"></span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="left">
+        <input type="text" id="search" placeholder="Buscar en cualquier columna…">
+        <label class="chk"><input type="checkbox" id="onlyFixed"> Ver solo filas corregidas</label>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span id="rowCountInfo"></span>
+        <button class="btn" id="downloadBtn">⬇ Descargar Excel depurado</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="theadRow"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<footer>Herramienta interna de depuración de exportaciones · no reemplaza el archivo original</footer>
+
+<script>
+const HEADER_ROWS_TO_SKIP = 5;
+const REQUIRED_HEADERS = ['NOTASALIDA','CODIGOPRODUCTO'];
+const NUMERIC_COLS = new Set(['CANTIDAD','PRECUNIT','TOTALSINDESCUENTOS']);
+const DATE_COLS = new Set(['FECHA_TRANSACCION']);
+const TEXT_COLS_KEEP_LEADING_ZEROS = new Set(['NOTASALIDA','CODIGO_CUENTA','CODIGOPRODUCTO']);
+
+let PARSED = null; // { headers, rows, fixedCount, fixedIds }
+let SOURCE_NAME = '';
+
+function parseArgNumber(v){
+  if (v === '' || v == null) return null;
+  const n = parseFloat(String(v).replace(',', '.'));
+  return isNaN(n) ? null : n;
+}
+function dateToExcelSerial(y, m, d){
+  // Days since the Excel/SheetJS 1900-date-system epoch (1899-12-30), computed purely
+  // via Date.UTC arithmetic so the result never depends on the browser's local timezone.
+  return Math.round((Date.UTC(y, m - 1, d) - Date.UTC(1899, 11, 30)) / 86400000);
+}
+function parseArgDate(v){
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(v || '');
+  if (!m) return null;
+  return dateToExcelSerial(+m[3], +m[2], +m[1]);
+}
+
+function parseNotasSalida(text){
+  let lines = text.split('\r\n');
+  while (lines.length && lines[lines.length-1].trim() === '') lines.pop();
+  if (lines.length <= HEADER_ROWS_TO_SKIP){
+    throw new Error('El archivo tiene muy pocas filas — no parece una exportación de Notas de Salida completa.');
+  }
+  const headerLine = lines[HEADER_ROWS_TO_SKIP];
+  const headers = headerLine.split('\t').map(h => h.trim()).filter(h => h !== '');
+  const missing = REQUIRED_HEADERS.filter(h => !headers.includes(h));
+  if (missing.length){
+    throw new Error('No se encontró el encabezado esperado en la fila 6 (faltan columnas: ' + missing.join(', ') + '). ¿Es el archivo correcto?');
+  }
+
+  const dataLines = lines.slice(HEADER_ROWS_TO_SKIP + 1).filter(l => l.trim() !== '');
+  const rows = [];
+  const fixedIds = [];
+
+  for (const line of dataLines){
+    const rawFields = line.split('\t');
+    let hadNewline = false;
+    const fields = rawFields.map(f => {
+      if (f.indexOf('\n') !== -1 || f.indexOf('\r') !== -1){
+        hadNewline = true;
+        return f.replace(/[\r\n]+/g, ' ').trim();
+      }
+      return f.trim();
+    });
+    const row = {};
+    headers.forEach((h, i) => { row[h] = fields[i] !== undefined ? fields[i] : ''; });
+    row.__fixed = hadNewline;
+    if (hadNewline) fixedIds.push(row['NOTASALIDA'] || '(sin número)');
+    rows.push(row);
+  }
+
+  return { headers, rows, fixedCount: fixedIds.length, fixedIds };
+}
+
+async function handleFile(file){
+  hideError();
+  SOURCE_NAME = file.name;
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf.slice(0, 8));
+  const isZip = bytes[0] === 0x50 && bytes[1] === 0x4B;
+  const isOle = bytes[0] === 0xD0 && bytes[1] === 0xCF && bytes[2] === 0x11 && bytes[3] === 0xE0;
+
+  if (isZip || isOle){
+    showError('Este archivo es un Excel binario real (' + (isZip ? '.xlsx' : '.xls antiguo') + '). Esta herramienta espera el archivo de texto tal cual lo entrega el sistema de Notas de Salida (el .xls que en realidad es texto separado por tabs). Subí ese archivo directamente, sin abrirlo/guardarlo antes en Excel.');
+    return;
+  }
+
+  const text = new TextDecoder('windows-1252').decode(buf);
+  try{
+    PARSED = parseNotasSalida(text);
+  }catch(err){
+    showError(err.message);
+    return;
+  }
+  renderResults();
+}
+
+function showError(msg){
+  const el = document.getElementById('error');
+  el.textContent = msg;
+  el.style.display = 'block';
+  document.getElementById('results').style.display = 'none';
+}
+function hideError(){
+  document.getElementById('error').style.display = 'none';
+}
+
+function renderResults(){
+  const { headers, rows, fixedCount, fixedIds } = PARSED;
+  document.getElementById('results').style.display = 'block';
+  document.getElementById('fileNameLabel').textContent = 'Archivo: ' + SOURCE_NAME;
+  document.getElementById('statTotal').textContent = rows.length.toLocaleString('es-AR');
+  document.getElementById('statCols').textContent = headers.length;
+  document.getElementById('statFixed').textContent = fixedCount;
+
+  const wrap = document.getElementById('fixedListWrap');
+  if (fixedCount > 0){
+    wrap.style.display = 'block';
+    document.getElementById('fixedListText').textContent = fixedIds.join(', ');
+  }else{
+    wrap.style.display = 'none';
+  }
+
+  const theadRow = document.getElementById('theadRow');
+  theadRow.innerHTML = headers.map(h => '<th>' + escapeHtml(h) + '</th>').join('');
+
+  renderTableBody();
+}
+
+function renderTableBody(){
+  const { headers, rows } = PARSED;
+  const search = document.getElementById('search').value.trim().toLowerCase();
+  const onlyFixed = document.getElementById('onlyFixed').checked;
+
+  let filtered = rows;
+  if (onlyFixed) filtered = filtered.filter(r => r.__fixed);
+  if (search){
+    filtered = filtered.filter(r => headers.some(h => (r[h] || '').toLowerCase().includes(search)));
+  }
+
+  const tbody = document.getElementById('tbody');
+  const MAX_RENDER = 1000;
+  const toRender = filtered.slice(0, MAX_RENDER);
+
+  tbody.innerHTML = toRender.map(r => {
+    const cls = r.__fixed ? ' class="fixed-row"' : '';
+    const cells = headers.map((h, i) => {
+      let val = escapeHtml(r[h] || '');
+      if (i === 3 && r.__fixed) val += '<span class="tag">corregida</span>';
+      return '<td>' + val + '</td>';
+    }).join('');
+    return '<tr' + cls + '>' + cells + '</tr>';
+  }).join('');
+
+  const info = document.getElementById('rowCountInfo');
+  if (filtered.length > MAX_RENDER){
+    info.textContent = 'Mostrando ' + MAX_RENDER.toLocaleString('es-AR') + ' de ' + filtered.length.toLocaleString('es-AR') + ' filas (refiná la búsqueda para ver el resto)';
+  }else{
+    info.textContent = filtered.length.toLocaleString('es-AR') + ' filas';
+  }
+}
+
+function escapeHtml(s){
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function downloadCleaned(){
+  if (!PARSED) return;
+  const { headers, rows } = PARSED;
+  const dateColIdx = new Set(headers.map((h,i) => DATE_COLS.has(h) ? i : -1).filter(i => i >= 0));
+  const aoa = [headers];
+  rows.forEach(r => {
+    const line = headers.map(h => {
+      const v = r[h] || '';
+      if (NUMERIC_COLS.has(h)) return parseArgNumber(v);
+      if (DATE_COLS.has(h)){ const s = parseArgDate(v); return s === null ? v : s; }
+      return v;
+    });
+    aoa.push(line);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // Date columns are written as plain serial numbers (timezone-independent); mark them
+  // with a date number format so Excel displays/sorts them as real dates.
+  for (let r = 1; r < aoa.length; r++){
+    dateColIdx.forEach(c => {
+      const ref = XLSX.utils.encode_cell({ r, c });
+      const cell = ws[ref];
+      if (cell && cell.t === 'n') cell.z = 'dd/mm/yyyy';
+    });
+  }
+  ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:aoa.length-1, c:headers.length-1} }) };
+  ws['!cols'] = headers.map(h => ({ wch: Math.min(Math.max(h.length, 12), 40) }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Notas de Salida');
+
+  const today = new Date();
+  const stamp = today.toISOString().slice(0,10);
+  const baseName = (SOURCE_NAME || 'notas_salida').replace(/\.[^.]+$/, '');
+  XLSX.writeFile(wb, baseName + '_depurado_' + stamp + '.xlsx');
+}
+
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+document.getElementById('search').addEventListener('input', renderTableBody);
+document.getElementById('onlyFixed').addEventListener('change', renderTableBody);
+document.getElementById('downloadBtn').addEventListener('click', downloadCleaned);
+</script>
+</body>
+</html>
