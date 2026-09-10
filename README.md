@@ -25,13 +25,32 @@ filas *solo* por `\r\n` y campos por `\t` — con lo cual el `\n` incrustado nun
 partir una fila. El salto de línea se reemplaza por un espacio dentro del campo, se recorta,
 y la fila queda íntegra desde el primer parseo. No hay ambigüedad ni adivinación.
 
+**Segundo defecto, mismo mecanismo distinto lugar**: otro subconjunto de filas tiene un
+**tab incrustado justo antes de `CANTIDAD`** (columna H). Esto no rompe la fila en dos (no
+hay salto de línea de por medio), pero sí produce un campo vacío "fantasma" exactamente en
+la posición de `CANTIDAD`, corriendo todo lo que sigue (`PRECUNIT`, `TOTALSINDESCUENTOS`,
+`CODIGO_CUENTA`, `DESC_CUENTA`, `UBICACION_ENTREGA`, `ESTADO`, `DETALLE`) una columna a la
+derecha — el patrón "I a O corrido una columna" que reportó contabilidad con los ejemplos
+`00018794`/`00018828`. Se detecta por longitud de fila (un campo más de lo esperado, con
+`CANTIDAD` vacío) y se corrige eliminando ese campo fantasma, sin heurística de "adivinar
+con la fila siguiente". Verificado en las 11 filas reales que tienen este defecto: la
+aritmética `CANTIDAD × PRECUNIT = TOTALSINDESCUENTOS` cierra exacto en las 11 después de
+la corrección.
+
+**Filas con una forma no reconocida** (ninguno de los dos patrones anteriores) se marcan
+como "anomalía" — se muestran resaltadas en rojo, con su N° de Nota de Salida, y **no se
+modifican**: quedan para revisión manual en vez de aplicarles una corrección a ciegas.
+
 ## Qué hace
 
 1. **Sube el archivo** (`.xls`, tal cual lo entrega el sistema).
 2. Elimina las primeras 5 filas de metadata; la fila 6 pasa a ser el encabezado real.
-3. Detecta y corrige los campos con salto de línea incrustado (marcados como "corregida"
-   en la vista previa, con un resumen de qué N° de Nota de Salida fueron afectados).
-4. Muestra la tabla depurada en el navegador (con buscador y filtro "solo corregidas").
+3. Detecta y corrige los campos con salto de línea incrustado en `DESTINATARIO`, y las
+   filas con el tab incrustado antes de `CANTIDAD` (cada una marcada y contada por
+   separado en la vista previa, con la lista de N° de Nota de Salida afectados). Cualquier
+   otra forma de fila inesperada queda marcada como anomalía sin tocar sus datos.
+4. Muestra la tabla depurada en el navegador (con buscador y filtro "ver solo filas
+   corregidas / con problema").
 5. Permite **exportar** el resultado como `.xlsx` (encabezado + filtro automático), con:
    - `NOTASALIDA`, `CODIGO_CUENTA`, `CODIGOPRODUCTO` como texto (se preservan ceros a la
      izquierda).
@@ -41,9 +60,11 @@ y la fila queda íntegra desde el primer parseo. No hay ambigüedad ni adivinaci
 
 ## Alcance actual / próximos pasos
 
-Esta es la primera versión: resuelve específicamente el defecto de salto de línea
-incrustado en `DESTINATARIO`. El usuario mencionó un segundo patrón de corrimiento de
-columnas que se abordará en una sesión futura — queda pendiente, no implementado todavía.
+Resuelve los dos patrones de corrupción conocidos hasta ahora (salto de línea en
+`DESTINATARIO`, tab incrustado antes de `CANTIDAD`). Si aparece un tercer patrón, el
+mecanismo de "anomalía" ya deja esas filas visibles y sin tocar — el próximo paso sería
+agregar su detección específica siguiendo el mismo enfoque (parsear la causa real, no
+reconstruir a ciegas).
 
 Si en algún momento el archivo de entrada cambia (otro layout, otra codificación), avisar
 para ajustar el parser — está escrito para este layout específico, no es un parser
