@@ -41,6 +41,14 @@ la corrección.
 como "anomalía" — se muestran resaltadas en rojo, con su N° de Nota de Salida, y **no se
 modifican**: quedan para revisión manual en vez de aplicarles una corrección a ciegas.
 
+**Dos avisos de contenido más** (no son bugs de parseo, son datos reales del archivo que
+conviene que contabilidad vea antes de tratar cada fila como un gasto cerrado):
+- **`ESTADO` distinto de `CERRADO`** (vacío o `ABIERTO`) — se resaltan en celeste con un
+  tag "ⓘ", sin modificar nada.
+- **Filas 100% duplicadas** (mismas 15 columnas, mismo N° de nota) — mismo tratamiento
+  visual. Puede ser un pedido legítimo repetido o un glitch de exportación; queda a
+  criterio de quien revisa.
+
 ## Qué hace
 
 1. **Sube el archivo** (`.xls`, tal cual lo entrega el sistema).
