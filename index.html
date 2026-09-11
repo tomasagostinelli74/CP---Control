@@ -619,6 +619,208 @@ function parseRequerimientosGastos(text){
   };
 }
 
+/* ================= módulo: Requerimiento de Compra ================= */
+function parseRequerimientoCompra(text){
+  const HEADER_ROWS_TO_SKIP = 6;
+  const REQUIRED = ['NUM', 'ESTADO', 'CODPROD'];
+  const CODPROD_RE = /^[A-Z]{3}\d+$/;
+  const SINO = new Set(['SI', 'NO']);
+
+  let lines = text.split('\r\n');
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  if (lines.length <= HEADER_ROWS_TO_SKIP){
+    throw new Error('El archivo tiene muy pocas filas — no parece una exportación de Requerimiento de Compra completa.');
+  }
+  const headers = lines[HEADER_ROWS_TO_SKIP].split('\t').map(h => h.trim());
+  if (headers.length && headers[headers.length - 1] === '') headers.pop();
+  const missing = REQUIRED.filter(h => !headers.includes(h));
+  if (missing.length){
+    throw new Error('No se encontró el encabezado esperado en la fila 7 (faltan columnas: ' + missing.join(', ') + '). ¿Es el archivo correcto?');
+  }
+
+  const N = headers.length;
+  const dataLines = lines.slice(HEADER_ROWS_TO_SKIP + 1).filter(l => l.trim() !== '');
+  const rows = [];
+
+  function buildRow(fieldsArr, flags){
+    const row = {};
+    headers.forEach((h, i) => { row[h] = (fieldsArr[i] !== undefined ? fieldsArr[i] : '').trim(); });
+    row._id = row['NUM'] || '(sin número)';
+    row._flags = Object.assign({ detalle: false, detalleObs: false, motivo: false, obsFast: false, anomaly: false }, flags);
+    return row;
+  }
+
+  function collapse(blob, expected){
+    if (blob.length === expected) return { vals: blob.slice(), merged: false };
+    const m = blob.join(' ');
+    return { vals: new Array(expected).fill(m), merged: true };
+  }
+
+  for (const line of dataLines){
+    let f = line.split('\t');
+    if (f.length > N && f[f.length - 1] === '') f = f.slice(0, -1);
+
+    if (f.length === N){
+      rows.push(buildRow(f, {}));
+      continue;
+    }
+
+    // Igual que en Requerimientos de Gastos: varios campos de texto libre pueden traer
+    // tabs incrustados. Acá hay más de un tramo de riesgo (DETALLE cerca del inicio,
+    // DETALLEITEM/OBS más adelante, MOTIVO y OBSERFASTTRACK después), así que se ubican
+    // anclas confiables en cadena: SINPARTIDA (SI/NO), el patrón fijo de CODPROD, y dos
+    // pares "espejo" (CC_CABECERA/DESC_CC deben repetirse literalmente en COD_CCITEM/
+    // NOM_CCITEM, y CODACT_CABE/DESCACT_CABE en CODIGO_CODACTITEM/NOM_CODACTITEM) que
+    // sirven de anclas exactas por valor, no solo por forma. Lo que sobra entre anclas
+    // se reabsorbe en el campo de texto libre correspondiente.
+    if (f.length < 20){
+      rows.push(buildRow(f, { anomaly: true }));
+      continue;
+    }
+    const n = f.length;
+    const head = f.slice(0, 4);
+
+    let ok = true;
+    const sp = f.slice(4).findIndex(v => SINO.has(v));
+    const spIdx = sp === -1 ? -1 : sp + 4;
+    if (spIdx === -1) ok = false;
+
+    let cpIdx = -1;
+    if (ok){
+      for (let i = spIdx + 1; i < n; i++){
+        if (CODPROD_RE.test(f[i])){ cpIdx = i; break; }
+      }
+      if (cpIdx === -1) ok = false;
+    }
+
+    let segB, origin, codtipocomp, nomtipocom, codact_cabe, descact_cabe, cc_cabecera, desc_cc, estado, linea;
+    if (ok){
+      segB = f.slice(spIdx + 1, cpIdx);
+      if (segB.length !== 9){ ok = false; }
+      else{
+        [origin, codtipocomp, nomtipocom, codact_cabe, descact_cabe, cc_cabecera, desc_cc, estado, linea] = segB;
+      }
+    }
+
+    let codalternativo, descprod;
+    if (ok){
+      if (cpIdx + 2 >= n){ ok = false; }
+      else{ codalternativo = f[cpIdx + 1]; descprod = f[cpIdx + 2]; }
+    }
+
+    let mirrorIdx = -1;
+    if (ok){
+      for (let i = cpIdx + 3; i < n - 1; i++){
+        if (f[i] === cc_cabecera && f[i + 1] === desc_cc){ mirrorIdx = i; break; }
+      }
+      if (mirrorIdx === -1) ok = false;
+    }
+
+    let detalleitem, obs, um, imp_total, cantidad, imp_unit, fechavenc, blob1Merged = false;
+    if (ok){
+      const blob1 = f.slice(cpIdx + 3, mirrorIdx);
+      if (blob1.length === 7){
+        [detalleitem, obs, um, imp_total, cantidad, imp_unit, fechavenc] = blob1;
+      } else if (blob1.length > 7){
+        const tailPart = blob1.slice(-5);
+        const headPart = blob1.slice(0, blob1.length - 5);
+        [um, imp_total, cantidad, imp_unit, fechavenc] = tailPart;
+        const c = collapse(headPart, 2);
+        [detalleitem, obs] = c.vals;
+        blob1Merged = true;
+      } else { ok = false; }
+    }
+
+    let codigo_codactitem, nom_codactitem, autorizacion;
+    if (ok){
+      if (mirrorIdx + 4 >= n){ ok = false; }
+      else{
+        codigo_codactitem = f[mirrorIdx + 2];
+        nom_codactitem = f[mirrorIdx + 3];
+        if (codigo_codactitem !== codact_cabe || nom_codactitem !== descact_cabe){ ok = false; }
+        else{ autorizacion = f[mirrorIdx + 4]; }
+      }
+    }
+
+    let ftIdx = -1;
+    if (ok){
+      for (let i = mirrorIdx + 5; i < n; i++){ if (SINO.has(f[i])){ ftIdx = i; break; } }
+      if (ftIdx === -1) ok = false;
+    }
+
+    let motivo, motivoMerged = false;
+    if (ok){
+      const motivoBlob = f.slice(mirrorIdx + 5, ftIdx);
+      if (motivoBlob.length === 1){ motivo = motivoBlob[0]; }
+      else if (motivoBlob.length > 1){ motivo = motivoBlob.join(' '); motivoMerged = true; }
+      else { ok = false; }
+    }
+
+    let siIdx = -1;
+    if (ok){
+      for (let i = ftIdx + 1; i < n; i++){ if (SINO.has(f[i])){ siIdx = i; break; } }
+      if (siIdx === -1) ok = false;
+    }
+
+    let obsFast, libFields, cuenta, descripcion, valortotal, blob2Merged = false;
+    if (ok){
+      const blob2 = f.slice(ftIdx + 1, siIdx);
+      if (blob2.length === 12){
+        obsFast = blob2[0];
+        libFields = blob2.slice(1, 9);
+        [cuenta, descripcion, valortotal] = blob2.slice(9, 12);
+      } else if (blob2.length > 12){
+        const tailPart = blob2.slice(-11);
+        const headPart = blob2.slice(0, blob2.length - 11);
+        libFields = tailPart.slice(0, 8);
+        [cuenta, descripcion, valortotal] = tailPart.slice(8, 11);
+        obsFast = headPart.join(' ');
+        blob2Merged = true;
+      } else { ok = false; }
+    }
+
+    let fecha_imputacion;
+    if (ok){
+      if (siIdx + 1 >= n){ ok = false; }
+      else{ fecha_imputacion = f[siIdx + 1]; }
+    }
+
+    if (!ok){
+      rows.push(buildRow(f, { anomaly: true }));
+      continue;
+    }
+
+    const detalleBlobRaw = f.slice(4, spIdx);
+    const dCollapse = collapse(detalleBlobRaw, 1);
+    const detalle = dCollapse.vals[0];
+
+    const rebuilt = head.concat(
+      [detalle, f[spIdx], origin, codtipocomp, nomtipocom, codact_cabe, descact_cabe, cc_cabecera, desc_cc, estado, linea],
+      [f[cpIdx], codalternativo, descprod, detalleitem, obs, um, imp_total, cantidad, imp_unit, fechavenc],
+      [cc_cabecera, desc_cc, codigo_codactitem, nom_codactitem, autorizacion, motivo, f[ftIdx]],
+      [obsFast], libFields, [cuenta, descripcion, valortotal],
+      [f[siIdx], fecha_imputacion]
+    );
+    rows.push(buildRow(rebuilt, {
+      detalle: dCollapse.merged,
+      detalleObs: blob1Merged,
+      motivo: motivoMerged,
+      obsFast: blob2Merged
+    }));
+  }
+
+  return {
+    headers, rows,
+    fixes: [
+      { key: 'detalle', label: 'Filas con DETALLE recompuesto (tab incrustado)', col: 'DETALLE', tagText: () => 'texto recompuesto' },
+      { key: 'detalleObs', label: 'Filas con DETALLEITEM / OBS recompuesto', col: 'DETALLEITEM', tagText: () => 'texto recompuesto' },
+      { key: 'motivo', label: 'Filas con MOTIVO recompuesto', col: 'MOTIVO', tagText: () => 'texto recompuesto' },
+      { key: 'obsFast', label: 'Filas con OBSERFASTTRACK recompuesto', col: 'OBSERFASTTRACK', tagText: () => 'texto recompuesto' }
+    ],
+    avisos: []
+  };
+}
+
 /* ================= definición de módulos / motor genérico ================= */
 const MODULES = [
   {
@@ -642,6 +844,17 @@ const MODULES = [
     dateCols: new Set(['FECHA_TRANSACCION', 'FECHA_ULTIMOESTADO']),
     sheetName: 'Requerimientos de Gastos',
     fileBase: 'requerimientos_gastos'
+  },
+  {
+    id: 'rc',
+    tabLabel: 'Requerimiento de Compra',
+    fileHint: 'Formato esperado: .xls (texto delimitado por tabs)',
+    accept: '.xls,.txt,.csv,.tsv',
+    parseFn: parseRequerimientoCompra,
+    numericCols: new Set(['IMPORTE_TOTAL_LINEA', 'CANTIDAD', 'IMPORTE_UNITARIO', 'VALORTOTAL']),
+    dateCols: new Set(['FECHA_TRAN', 'FECHA_ULTEST', 'FECHAVENC', 'FECHA_IMPUTACION']),
+    sheetName: 'Requerimiento de Compra',
+    fileBase: 'requerimiento_compra'
   }
 ];
 MODULES.forEach(m => { m.state = { parsed: null, sourceName: '' }; });

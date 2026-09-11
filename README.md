@@ -43,6 +43,22 @@ uniendo con espacios. Si las anclas no se pueden ubicar de forma consistente, la
 queda marcada como anomalía sin modificarla — nunca se fuerza una reconstrucción dudosa.
 Verificado contra las 13 filas reales con este defecto en el archivo de muestra.
 
+### Requerimiento de Compra
+
+Mismo formato (texto por tabs, 6 líneas de metadata, encabezado en la línea 7), pero
+mucho más ancho (46 columnas reales) y con **hasta cuatro** campos de texto libre que
+pueden traer tabs incrustados en la misma fila (`DETALLE` cerca del inicio; `DETALLEITEM`
+y `OBS` más adelante, tratados como un mismo bloque; `MOTIVO`; `OBSERFASTTRACK`). Mismo
+enfoque de anclas que en Requerimientos de Gastos, pero encadenando más de ellas: además
+de `SINPARTIDA` (`SI`/`NO`) y el patrón fijo de `CODPROD`, se usan dos **anclas por
+valor** — `CC_CABECERA`/`DESC_CC` tienen que reaparecer literalmente, en ese orden, como
+`COD_CCITEM`/`NOM_CCITEM` más adelante en la misma fila, y lo mismo para
+`CODACT_CABE`/`DESCACT_CABE` contra `CODIGO_CODACTITEM`/`NOM_CODACTITEM` justo después —
+si esos pares no coinciden exactamente, la fila se descarta como anomalía en vez de
+reconstruirse a ciegas. Verificado contra las 3 filas reales con este defecto (0
+anomalías) y con `CANTIDAD × IMPORTE_UNITARIO = IMPORTE_TOTAL_LINEA` exacto en las 150
+filas del archivo de muestra.
+
 ## Diseño común a todos los módulos
 
 - Barra de salud compacta (limpias / corregidas / avisos / a revisar) en vez de texto.
