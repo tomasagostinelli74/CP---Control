@@ -59,6 +59,27 @@ reconstruirse a ciegas. Verificado contra las 3 filas reales con este defecto (0
 anomalías) y con `CANTIDAD × IMPORTE_UNITARIO = IMPORTE_TOTAL_LINEA` exacto en las 150
 filas del archivo de muestra.
 
+### Resumen General (módulo 5 — el "rejunte")
+
+No tiene subida de archivo propia: lee lo que ya esté cargado en los otros módulos
+(`ROLLUP_SOURCE_IDS` en el código — hoy `ns`, `rg`, `rc`; `comprometidos` se suma ahí el
+día que exista) y arma un dashboard en vivo, sin volver a pedir nada.
+
+- **Fuentes**: qué módulos tienen datos cargados y cuántas filas, con los que todavía
+  faltan marcados aparte (hoy: Comprometidos).
+- **Dashboard**: importe total, filas totales, módulos cargados, y tres rankings visuales
+  (barras, no tablas de texto) — por módulo, por centro de costo, y por persona (quién
+  concentra más gasto) — top 8 cada uno, ordenados de mayor a menor.
+- Cada módulo aporta su propio campo de "importe" y "centro de costo"/"persona" via
+  `dashboardMap` en su definición (`{amountCol, centroCol, personaCol}`) — así el rollup
+  no necesita saber los nombres de columna de cada formato.
+- **Las filas marcadas como anomalía se excluyen del cálculo** (no se puede confiar en su
+  importe/centro si no se pudieron reconstruir) — se cuentan aparte en un stat card
+  cuando corresponde, nunca se suman en silencio.
+- **Exportación multi-hoja**: un único `.xlsx` con una hoja `Resumen` (las mismas tablas
+  del dashboard, en datos) + una hoja por cada módulo con datos cargados, con el mismo
+  contenido depurado que bajarías desde ese módulo individualmente.
+
 ## Diseño común a todos los módulos
 
 - Barra de salud compacta (limpias / corregidas / avisos / a revisar) en vez de texto.

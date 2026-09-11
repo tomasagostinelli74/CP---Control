@@ -359,6 +359,75 @@
   .tag.danger{background:var(--danger);}
   .tag.info{background:var(--info);}
   .row-count-info{font-size:12px; color:var(--text-muted);}
+
+  .fuentes-grid{display:flex; flex-wrap:wrap; gap:10px;}
+  .fuente{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 12px;
+    border-radius:10px;
+    border:1px solid var(--line);
+    background:rgba(255,255,255,.5);
+    font-size:12.5px;
+  }
+  .fuente .dot2{width:8px; height:8px; border-radius:50%; background:var(--text-muted); flex:none;}
+  .fuente.ok .dot2{background:var(--ok);}
+  .fuente.pending .dot2{background:#c7ccd4;}
+  .fuente-label{font-weight:600; color:var(--navy);}
+  .fuente.pending .fuente-label{color:var(--text-muted); font-weight:600;}
+  .fuente-status{color:var(--text-muted);}
+
+  .dash-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(240px,1fr));
+    gap:18px;
+    margin-top:16px;
+  }
+  .dash-col h3{
+    margin:0 0 10px;
+    font-size:12.5px;
+    font-weight:700;
+    color:var(--text-muted);
+    text-transform:uppercase;
+    letter-spacing:.4px;
+  }
+  .bar-row{
+    display:grid;
+    grid-template-columns:1fr 80px;
+    align-items:center;
+    gap:8px;
+    margin-bottom:9px;
+    font-size:12px;
+  }
+  .bar-label{
+    grid-column:1;
+    color:var(--text);
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    margin-bottom:3px;
+  }
+  .bar-track{
+    grid-column:1;
+    height:6px;
+    border-radius:999px;
+    background:#eef1f5;
+    overflow:hidden;
+  }
+  .bar-fill{
+    height:100%;
+    border-radius:999px;
+    background:linear-gradient(90deg, var(--blue), var(--gold));
+  }
+  .bar-value{
+    grid-column:2;
+    grid-row:1 / span 2;
+    text-align:right;
+    font-weight:700;
+    color:var(--navy);
+    font-size:12px;
+  }
+  .btn:disabled{opacity:.45; cursor:not-allowed; transform:none !important;}
+
   footer{
     text-align:center;
     font-size:12px;
@@ -832,7 +901,8 @@ const MODULES = [
     numericCols: new Set(['CANTIDAD', 'PRECUNIT', 'TOTALSINDESCUENTOS']),
     dateCols: new Set(['FECHA_TRANSACCION']),
     sheetName: 'Notas de Salida',
-    fileBase: 'notas_salida'
+    fileBase: 'notas_salida',
+    dashboardMap: { amountCol: 'TOTALSINDESCUENTOS', centroCol: 'CENTROCOSTO', personaCol: 'DESTINATARIO' }
   },
   {
     id: 'rg',
@@ -843,7 +913,8 @@ const MODULES = [
     numericCols: new Set(['MPORTE_UNITARIO', 'CANTIDAD', 'IMPORTE_TOTAL_LINEA', 'VALORTOTAL']),
     dateCols: new Set(['FECHA_TRANSACCION', 'FECHA_ULTIMOESTADO']),
     sheetName: 'Requerimientos de Gastos',
-    fileBase: 'requerimientos_gastos'
+    fileBase: 'requerimientos_gastos',
+    dashboardMap: { amountCol: 'IMPORTE_TOTAL_LINEA', centroCol: 'DESCRIPCION_CENTRO_COSTO', personaCol: 'ORIGINANTE' }
   },
   {
     id: 'rc',
@@ -854,10 +925,14 @@ const MODULES = [
     numericCols: new Set(['IMPORTE_TOTAL_LINEA', 'CANTIDAD', 'IMPORTE_UNITARIO', 'VALORTOTAL']),
     dateCols: new Set(['FECHA_TRAN', 'FECHA_ULTEST', 'FECHAVENC', 'FECHA_IMPUTACION']),
     sheetName: 'Requerimiento de Compra',
-    fileBase: 'requerimiento_compra'
+    fileBase: 'requerimiento_compra',
+    dashboardMap: { amountCol: 'IMPORTE_TOTAL_LINEA', centroCol: 'DESC_CC', personaCol: 'ORIGIN' }
   }
 ];
 MODULES.forEach(m => { m.state = { parsed: null, sourceName: '' }; });
+
+const ROLLUP_TAB = { id: 'resumen', tabLabel: 'Resumen General', isRollup: true };
+const TABS = MODULES.concat([ROLLUP_TAB]);
 
 function buildShell(){
   const tabsNav = document.getElementById('tabsNav');
@@ -866,7 +941,7 @@ function buildShell(){
   tabsNav.appendChild(tabsInner);
   const panelsRoot = document.getElementById('panelsRoot');
 
-  MODULES.forEach((mod, i) => {
+  TABS.forEach((mod, i) => {
     const btn = document.createElement('button');
     btn.textContent = mod.tabLabel;
     btn.className = i === 0 ? 'active' : '';
@@ -877,6 +952,44 @@ function buildShell(){
     const panel = document.createElement('section');
     panel.className = 'panel' + (i === 0 ? ' active' : '');
     panel.id = 'panel-' + mod.id;
+
+    if (mod.isRollup){
+      panel.innerHTML = `
+        <div class="card">
+          <h2>Fuentes</h2>
+          <p class="sub">Junta lo que ya depuraste en los otros módulos — no hace falta volver a subir nada acá.</p>
+          <div id="resumen-fuentes" class="fuentes-grid"></div>
+        </div>
+
+        <div class="card">
+          <h2>Dashboard</h2>
+          <div class="stat-row" id="resumen-statRow"></div>
+
+          <div class="dash-grid">
+            <div class="dash-col">
+              <h3>Por módulo</h3>
+              <div id="resumen-porModulo"></div>
+            </div>
+            <div class="dash-col">
+              <h3>Top centros de costo</h3>
+              <div id="resumen-porCentro"></div>
+            </div>
+            <div class="dash-col">
+              <h3>Top personas</h3>
+              <div id="resumen-porPersona"></div>
+            </div>
+          </div>
+
+          <div class="toolbar" style="justify-content:flex-end">
+            <button class="btn" id="resumen-downloadBtn">⬇ Descargar Excel consolidado (multi-hoja)</button>
+          </div>
+        </div>
+      `;
+      panelsRoot.appendChild(panel);
+      document.getElementById('resumen-downloadBtn').addEventListener('click', downloadConsolidado);
+      return;
+    }
+
     panel.innerHTML = `
       <div class="card">
         <h2>Subir archivo</h2>
@@ -919,13 +1032,16 @@ function buildShell(){
 
     wireModule(mod);
   });
+
+  renderRollup();
 }
 
 function activateTab(id){
-  MODULES.forEach(m => {
+  TABS.forEach(m => {
     document.getElementById('tabbtn-' + m.id).classList.toggle('active', m.id === id);
     document.getElementById('panel-' + m.id).classList.toggle('active', m.id === id);
   });
+  if (id === 'resumen') renderRollup();
 }
 
 function wireModule(mod){
@@ -1091,10 +1207,8 @@ function renderTableBody(mod){
   }
 }
 
-function downloadCleaned(mod){
-  const P = mod.state.parsed;
-  if (!P) return;
-  const { headers, rows } = P;
+function buildModuleSheet(mod){
+  const { headers, rows } = mod.state.parsed;
   const dateColIdx = new Set(headers.map((h, i) => mod.dateCols.has(h) ? i : -1).filter(i => i >= 0));
   const aoa = [headers];
   rows.forEach(r => {
@@ -1117,13 +1231,154 @@ function downloadCleaned(mod){
   }
   ws['!autofilter'] = { ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: aoa.length - 1, c: headers.length - 1 } }) };
   ws['!cols'] = headers.map(h => ({ wch: Math.min(Math.max(h.length, 12), 40) }));
+  return ws;
+}
 
+function downloadCleaned(mod){
+  if (!mod.state.parsed) return;
+  const ws = buildModuleSheet(mod);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, mod.sheetName);
 
   const stamp = new Date().toISOString().slice(0, 10);
   const baseName = (mod.state.sourceName || mod.fileBase).replace(/\.[^.]+$/, '');
   XLSX.writeFile(wb, baseName + '_depurado_' + stamp + '.xlsx');
+}
+
+/* ================= módulo 5: Resumen General (rejunte + dashboard) ================= */
+const ROLLUP_SOURCE_IDS = ['ns', 'rg', 'rc']; // 'comprometidos' se suma acá cuando exista
+const TOP_N = 8;
+
+function fmtMoney(n){
+  return '$' + n.toLocaleString('es-AR', { maximumFractionDigits: 0 });
+}
+
+function computeRollup(){
+  const sources = ROLLUP_SOURCE_IDS.map(id => MODULES.find(m => m.id === id)).filter(Boolean);
+  const loaded = sources.filter(m => m.state.parsed);
+  const missing = sources.filter(m => !m.state.parsed);
+
+  const centroTotals = new Map();
+  const personaTotals = new Map();
+  const moduloTotals = [];
+  let totalImporte = 0, totalFilas = 0, filasExcluidas = 0;
+
+  loaded.forEach(mod => {
+    const map = mod.dashboardMap;
+    const { rows } = mod.state.parsed;
+    let modImporte = 0, modFilas = 0;
+    rows.forEach(r => {
+      totalFilas++;
+      if (r._flags && r._flags.anomaly){ filasExcluidas++; return; } // no confiar en datos sin reconstruir
+      const importe = parseArgNumber(r[map.amountCol]) || 0;
+      const centro = (r[map.centroCol] || '(sin centro de costo)').trim() || '(sin centro de costo)';
+      const persona = (r[map.personaCol] || '(sin identificar)').trim() || '(sin identificar)';
+
+      modImporte += importe;
+      modFilas++;
+      totalImporte += importe;
+
+      const c = centroTotals.get(centro) || { total: 0, count: 0 };
+      c.total += importe; c.count++;
+      centroTotals.set(centro, c);
+
+      const p = personaTotals.get(persona) || { total: 0, count: 0 };
+      p.total += importe; p.count++;
+      personaTotals.set(persona, p);
+    });
+    moduloTotals.push({ id: mod.id, label: mod.tabLabel, total: modImporte, count: modFilas });
+  });
+
+  const topCentros = Array.from(centroTotals, ([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+  const topPersonas = Array.from(personaTotals, ([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+
+  return { loaded, missing, totalImporte, totalFilas, filasExcluidas, moduloTotals, topCentros, topPersonas };
+}
+
+function barListHtml(items){
+  const max = items.length ? items[0].total : 0;
+  return items.slice(0, TOP_N).map(it => `
+    <div class="bar-row">
+      <div class="bar-label" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${max ? (it.total / max * 100).toFixed(1) : 0}%"></div></div>
+      <div class="bar-value">${fmtMoney(it.total)}</div>
+    </div>
+  `).join('') || '<p class="sub">Sin datos todavía.</p>';
+}
+
+function renderRollup(){
+  const R = computeRollup();
+  const allSources = ROLLUP_SOURCE_IDS.map(id => MODULES.find(m => m.id === id)).filter(Boolean);
+
+  const fuentesHtml = allSources.map(mod => {
+    const ok = !!mod.state.parsed;
+    const n = ok ? mod.state.parsed.rows.length.toLocaleString('es-AR') : null;
+    return `<div class="fuente ${ok ? 'ok' : 'pending'}">
+      <span class="dot2"></span>
+      <span class="fuente-label">${escapeHtml(mod.tabLabel)}</span>
+      <span class="fuente-status">${ok ? n + ' filas' : 'sin cargar'}</span>
+    </div>`;
+  }).join('') + `<div class="fuente pending"><span class="dot2"></span><span class="fuente-label">Comprometidos</span><span class="fuente-status">módulo pendiente</span></div>`;
+  document.getElementById('resumen-fuentes').innerHTML = fuentesHtml;
+
+  document.getElementById('resumen-statRow').innerHTML = `
+    <div class="stat"><div class="n">${fmtMoney(R.totalImporte)}</div><div class="l">Importe total (módulos cargados)</div></div>
+    <div class="stat"><div class="n">${R.totalFilas.toLocaleString('es-AR')}</div><div class="l">Filas totales</div></div>
+    <div class="stat"><div class="n">${R.loaded.length}/${ROLLUP_SOURCE_IDS.length + 1}</div><div class="l">Módulos con datos cargados</div></div>
+    ${R.filasExcluidas ? `<div class="stat anomaly"><div class="n">${R.filasExcluidas}</div><div class="l">Filas excluidas del cálculo (anomalías sin reconstruir)</div></div>` : ''}
+  `;
+
+  document.getElementById('resumen-porModulo').innerHTML = R.moduloTotals.length
+    ? barListHtml(R.moduloTotals.map(m => ({ name: m.label, total: m.total })))
+    : '<p class="sub">Cargá al menos un módulo para ver el desglose.</p>';
+
+  document.getElementById('resumen-porCentro').innerHTML = barListHtml(R.topCentros);
+  document.getElementById('resumen-porPersona').innerHTML = barListHtml(R.topPersonas);
+
+  const btn = document.getElementById('resumen-downloadBtn');
+  btn.disabled = R.loaded.length === 0;
+}
+
+function downloadConsolidado(){
+  const sources = ROLLUP_SOURCE_IDS.map(id => MODULES.find(m => m.id === id)).filter(Boolean);
+  const loaded = sources.filter(m => m.state.parsed);
+  if (!loaded.length) return;
+
+  const wb = XLSX.utils.book_new();
+
+  const R = computeRollup();
+  const resumenAoa = [
+    ['Resumen general — generado ' + new Date().toLocaleString('es-AR')],
+    [],
+    ['Importe total', R.totalImporte],
+    ['Filas totales', R.totalFilas],
+    ['Filas excluidas (anomalías sin reconstruir)', R.filasExcluidas],
+    [],
+    ['Por módulo'],
+    ['Módulo', 'Importe', 'Filas'],
+    ...R.moduloTotals.map(m => [m.label, m.total, m.count]),
+    [],
+    ['Por centro de costo'],
+    ['Centro de costo', 'Importe', 'Filas'],
+    ...R.topCentros.map(c => [c.name, c.total, c.count]),
+    [],
+    ['Por persona'],
+    ['Persona', 'Importe', 'Filas'],
+    ...R.topPersonas.map(p => [p.name, p.total, p.count])
+  ];
+  const resumenWs = XLSX.utils.aoa_to_sheet(resumenAoa);
+  resumenWs['!cols'] = [{ wch: 42 }, { wch: 16 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, resumenWs, 'Resumen');
+
+  loaded.forEach(mod => {
+    const ws = buildModuleSheet(mod);
+    let name = mod.sheetName;
+    if (name.length > 31) name = name.slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, name);
+  });
+
+  const stamp = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, 'resumen_consolidado_' + stamp + '.xlsx');
 }
 
 buildShell();
