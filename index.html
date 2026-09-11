@@ -1054,9 +1054,26 @@ function buildShell(){
 }
 
 function activateTab(id){
+  // La tabla de cada módulo puede tener miles de celdas (hasta 46 columnas). Mantenerlas
+  // todas en el DOM a la vez, aunque estén ocultas, es lo que hacía lenta la navegación
+  // entre pestañas — el navegador igual tiene que sostener ese árbol enorme. Por eso solo
+  // la pestaña activa tiene su <tbody> realmente construido; al salir de una pestaña se
+  // vacía (los datos parseados siguen en memoria) y al volver se reconstruye al toque.
   TABS.forEach(m => {
-    document.getElementById('tabbtn-' + m.id).classList.toggle('active', m.id === id);
-    document.getElementById('panel-' + m.id).classList.toggle('active', m.id === id);
+    const panel = document.getElementById('panel-' + m.id);
+    const wasActive = panel.classList.contains('active');
+    const isActive = m.id === id;
+    document.getElementById('tabbtn-' + m.id).classList.toggle('active', isActive);
+    panel.classList.toggle('active', isActive);
+
+    if (!m.isRollup){
+      if (isActive && m.state.parsed){
+        renderTableBody(m);
+      } else if (!isActive && wasActive){
+        const tbody = document.getElementById(m.id + '-tbody');
+        if (tbody) tbody.innerHTML = '';
+      }
+    }
   });
   if (id === 'resumen') renderRollup();
 }
@@ -1186,15 +1203,10 @@ function renderTableBody(mod){
   }
 
   const tbody = document.getElementById(mod.id + '-tbody');
-  const MAX_RENDER = 1000;
+  // Con hasta 46 columnas por módulo, cada fila de más pesa bastante en el DOM — se
+  // limita la vista previa para que cambiar de pestaña y filtrar se sientan livianos.
+  const MAX_RENDER = 200;
   const toRender = filtered.slice(0, MAX_RENDER);
-
-  const colTags = {}; // colIndex -> [{key, tagText, cls}]
-  function addTag(colName, tagText, cls){
-    const idx = headers.indexOf(colName);
-    if (idx < 0) return;
-    (colTags[idx] = colTags[idx] || []).push({ tagText, cls });
-  }
 
   tbody.innerHTML = toRender.map(r => {
     let cls = '';
