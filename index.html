@@ -729,19 +729,20 @@ function parseRequerimientoCompra(text){
     let f = line.split('\t');
     if (f.length > N && f[f.length - 1] === '') f = f.slice(0, -1);
 
-    if (f.length === N){
-      rows.push(buildRow(f, {}));
-      continue;
-    }
-
-    // Igual que en Requerimientos de Gastos: varios campos de texto libre pueden traer
-    // tabs incrustados. Acá hay más de un tramo de riesgo (DETALLE cerca del inicio,
-    // DETALLEITEM/OBS más adelante, MOTIVO y OBSERFASTTRACK después), así que se ubican
-    // anclas confiables en cadena: SINPARTIDA (SI/NO), el patrón fijo de CODPROD, y dos
-    // pares "espejo" (CC_CABECERA/DESC_CC deben repetirse literalmente en COD_CCITEM/
-    // NOM_CCITEM, y CODACT_CABE/DESCACT_CABE en CODIGO_CODACTITEM/NOM_CODACTITEM) que
-    // sirven de anclas exactas por valor, no solo por forma. Lo que sobra entre anclas
-    // se reabsorbe en el campo de texto libre correspondiente.
+    // OJO: NO alcanza con comprobar que la fila tenga la cantidad correcta de columnas
+    // (longitud === N) para darla por buena. Se encontraron filas reales con DOS defectos
+    // que se compensan (p.ej. DESCPROD se fragmenta de más Y a la vez UM pierde su valor
+    // por completo) y terminan sumando exactamente N columnas mientras el contenido queda
+    // completamente desalineado. Por eso TODA fila —tenga o no la longitud "esperada"—
+    // pasa por la misma cadena de anclas y validaciones; nada se acepta solo por el
+    // conteo de columnas.
+    //
+    // Anclas en cadena: SINPARTIDA (SI/NO), el patrón fijo de CODPROD, y el terceto
+    // IMPORTE_TOTAL_LINEA/CANTIDAD/IMPORTE_UNITARIO ubicado por su propia relación
+    // aritmética (no por comparar valores contra otra columna — CC_CABECERA/CODACT_CABE
+    // pueden legítimamente diferir de sus pares a nivel ítem, confirmado con datos
+    // reales). Lo que sobra entre anclas se reabsorbe en el campo de texto libre
+    // correspondiente; lo que no cierra se marca como anomalía en vez de forzarse.
     if (f.length < 20){
       rows.push(buildRow(f, { anomaly: true }));
       continue;
@@ -754,72 +755,87 @@ function parseRequerimientoCompra(text){
     const spIdx = sp === -1 ? -1 : sp + 4;
     if (spIdx === -1) ok = false;
 
-    let cpIdx = -1;
-    if (ok){
-      for (let i = spIdx + 1; i < n; i++){
-        if (CODPROD_RE.test(f[i])){ cpIdx = i; break; }
-      }
-      if (cpIdx === -1) ok = false;
-    }
-
+    // CODPROD se ubica por posición, no por búsqueda: el tramo ORIGIN..LINEA siempre
+    // tiene exactamente 9 campos, así que CODPROD cae justo después. Buscarlo por patrón
+    // en toda la fila es riesgoso — CODACT_CABE a veces tiene la misma forma (3 letras +
+    // dígitos, ej. "EXT2616") y el patrón podía enganchar ahí por error.
+    const cpIdx = spIdx + 10;
     let segB, origin, codtipocomp, nomtipocom, codact_cabe, descact_cabe, cc_cabecera, desc_cc, estado, linea;
     if (ok){
-      segB = f.slice(spIdx + 1, cpIdx);
-      if (segB.length !== 9){ ok = false; }
+      if (cpIdx >= n || !CODPROD_RE.test(f[cpIdx])){ ok = false; }
       else{
+        segB = f.slice(spIdx + 1, cpIdx);
         [origin, codtipocomp, nomtipocom, codact_cabe, descact_cabe, cc_cabecera, desc_cc, estado, linea] = segB;
       }
     }
 
-    let codalternativo, descprod;
+    // Ancla clave: en vez de exigir que CC_CABECERA/DESC_CC reaparezcan literalmente más
+    // adelante como COD_CCITEM/NOM_CCITEM (no siempre pasa — el centro de costo del ítem
+    // puede ser legítimamente distinto al de la cabecera, confirmado con un archivo real
+    // más grande), se ubica el terceto IMPORTE_TOTAL_LINEA/CANTIDAD/IMPORTE_UNITARIO por
+    // su propia relación aritmética (CANTIDAD × IMPORTE_UNITARIO = IMPORTE_TOTAL_LINEA),
+    // que sí es un invariante real de negocio, no un patrón que depende de otra columna.
+    let tripleIdx = -1;
     if (ok){
-      if (cpIdx + 2 >= n){ ok = false; }
-      else{ codalternativo = f[cpIdx + 1]; descprod = f[cpIdx + 2]; }
-    }
-
-    let mirrorIdx = -1;
-    if (ok){
-      for (let i = cpIdx + 3; i < n - 1; i++){
-        if (f[i] === cc_cabecera && f[i + 1] === desc_cc){ mirrorIdx = i; break; }
+      for (let i = cpIdx + 2; i <= n - 3; i++){
+        const t = parseArgNumber(f[i]), c = parseArgNumber(f[i + 1]), u = parseArgNumber(f[i + 2]);
+        if (t !== null && c !== null && u !== null && Math.abs(c * u - t) <= Math.max(1, 0.02 * Math.abs(t))){
+          tripleIdx = i; break;
+        }
       }
-      if (mirrorIdx === -1) ok = false;
+      if (tripleIdx === -1) ok = false;
     }
 
-    let detalleitem, obs, um, imp_total, cantidad, imp_unit, fechavenc, blob1Merged = false;
+    // Entre CODPROD y el terceto va CODALTERNATIVO + DESCPROD + DETALLEITEM + OBS + UM.
+    // CODALTERNATIVO casi nunca trae texto libre, se toma directo. El resto puede traer
+    // más campos de la cuenta (DESCPROD incluido, se vio fragmentarse en un caso real) o
+    // uno menos si UM directamente falta — se resuelve por longitud del tramo, no por
+    // anclas internas (no hay ninguna confiable ahí adentro).
+    let codalternativo, descprod, detalleitem, obs, um, imp_total, cantidad, imp_unit;
+    let detalleObsMerged = false;
     if (ok){
-      const blob1 = f.slice(cpIdx + 3, mirrorIdx);
-      if (blob1.length === 7){
-        [detalleitem, obs, um, imp_total, cantidad, imp_unit, fechavenc] = blob1;
-      } else if (blob1.length > 7){
-        const tailPart = blob1.slice(-5);
-        const headPart = blob1.slice(0, blob1.length - 5);
-        [um, imp_total, cantidad, imp_unit, fechavenc] = tailPart;
-        const c = collapse(headPart, 2);
-        [detalleitem, obs] = c.vals;
-        blob1Merged = true;
-      } else { ok = false; }
-    }
-
-    let codigo_codactitem, nom_codactitem, autorizacion;
-    if (ok){
-      if (mirrorIdx + 4 >= n){ ok = false; }
+      if (cpIdx + 1 >= n){ ok = false; }
       else{
-        codigo_codactitem = f[mirrorIdx + 2];
-        nom_codactitem = f[mirrorIdx + 3];
-        if (codigo_codactitem !== codact_cabe || nom_codactitem !== descact_cabe){ ok = false; }
-        else{ autorizacion = f[mirrorIdx + 4]; }
+        codalternativo = f[cpIdx + 1];
+        const mid = f.slice(cpIdx + 2, tripleIdx);
+        imp_total = f[tripleIdx]; cantidad = f[tripleIdx + 1]; imp_unit = f[tripleIdx + 2];
+        if (mid.length === 4){
+          [descprod, detalleitem, obs, um] = mid;
+        } else if (mid.length === 3){
+          [descprod, detalleitem, obs] = mid; um = '';
+        } else if (mid.length > 4){
+          um = mid[mid.length - 1];
+          const headPart = mid.slice(0, mid.length - 1);
+          descprod = headPart[0];
+          const c = collapse(headPart.slice(1), 2);
+          [detalleitem, obs] = c.vals;
+          detalleObsMerged = headPart.length > 3;
+        } else { ok = false; }
+      }
+    }
+
+    let fechavenc, cod_ccitem, nom_ccitem, codigo_codactitem, nom_codactitem, autorizacion;
+    if (ok){
+      if (tripleIdx + 8 >= n){ ok = false; }
+      else{
+        fechavenc = f[tripleIdx + 3];
+        cod_ccitem = f[tripleIdx + 4];
+        nom_ccitem = f[tripleIdx + 5];
+        codigo_codactitem = f[tripleIdx + 6];
+        nom_codactitem = f[tripleIdx + 7];
+        autorizacion = f[tripleIdx + 8];
       }
     }
 
     let ftIdx = -1;
     if (ok){
-      for (let i = mirrorIdx + 5; i < n; i++){ if (SINO.has(f[i])){ ftIdx = i; break; } }
+      for (let i = tripleIdx + 9; i < n; i++){ if (SINO.has(f[i])){ ftIdx = i; break; } }
       if (ftIdx === -1) ok = false;
     }
 
     let motivo, motivoMerged = false;
     if (ok){
-      const motivoBlob = f.slice(mirrorIdx + 5, ftIdx);
+      const motivoBlob = f.slice(tripleIdx + 9, ftIdx);
       if (motivoBlob.length === 1){ motivo = motivoBlob[0]; }
       else if (motivoBlob.length > 1){ motivo = motivoBlob.join(' '); motivoMerged = true; }
       else { ok = false; }
@@ -848,11 +864,12 @@ function parseRequerimientoCompra(text){
       } else { ok = false; }
     }
 
-    let fecha_imputacion;
-    if (ok){
-      if (siIdx + 1 >= n){ ok = false; }
-      else{ fecha_imputacion = f[siIdx + 1]; }
-    }
+    // FECHA_IMPUTACION es el último campo real antes de la columna vacía de siempre — en
+    // algún caso real el archivo directamente se queda sin ese último valor (falta el tab
+    // final). El resto de la fila (importes, cantidades, todo lo verificado por anclas)
+    // ya está confirmado en este punto, así que se lo deja vacío en vez de descartar toda
+    // la fila por un campo secundario de fecha.
+    const fecha_imputacion = (siIdx + 1 < n) ? f[siIdx + 1] : '';
 
     if (!ok){
       rows.push(buildRow(f, { anomaly: true }));
@@ -866,13 +883,13 @@ function parseRequerimientoCompra(text){
     const rebuilt = head.concat(
       [detalle, f[spIdx], origin, codtipocomp, nomtipocom, codact_cabe, descact_cabe, cc_cabecera, desc_cc, estado, linea],
       [f[cpIdx], codalternativo, descprod, detalleitem, obs, um, imp_total, cantidad, imp_unit, fechavenc],
-      [cc_cabecera, desc_cc, codigo_codactitem, nom_codactitem, autorizacion, motivo, f[ftIdx]],
+      [cod_ccitem, nom_ccitem, codigo_codactitem, nom_codactitem, autorizacion, motivo, f[ftIdx]],
       [obsFast], libFields, [cuenta, descripcion, valortotal],
       [f[siIdx], fecha_imputacion]
     );
     rows.push(buildRow(rebuilt, {
       detalle: dCollapse.merged,
-      detalleObs: blob1Merged,
+      detalleObs: detalleObsMerged,
       motivo: motivoMerged,
       obsFast: blob2Merged
     }));
