@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "notas-salida",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "8937"],
+      "port": 8937
+    }
+  ]
+}

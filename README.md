@@ -72,14 +72,31 @@ cantidades (que se verifican aparte). Verificado contra las 3 filas reales del a
 muestra original más 5 filas de un archivo real más grande con el defecto compensado
 descripto arriba — las 8 recuperan correctamente los importes, cantidades y fechas.
 
+### Comprometidos
+
+Mismo formato de archivo (texto por tabs, `windows-1252`), pero con metadata más corta:
+solo 3 líneas antes del encabezado (título + 2 líneas en blanco), encabezado en la línea 4.
+10 columnas, incluido `ROUND(TOTAL,2)` — una expresión SQL filtrada tal cual al export, se
+usa así a propósito, no es un typo a "corregir".
+
+A diferencia de los otros módulos, acá `DETALLE` y `NOTA` son ambos texto libre frecuente
+y sin ninguna ancla fija entre medio (ni un enum `SI`/`NO`, ni un código con patrón
+reconocible) — no hay forma confiable de saber dónde cortar un tab incrustado. Por eso este
+módulo **no intenta reconstruir** filas fragmentadas: si la cantidad de columnas no cierra
+(o el importe no es numérico con la cantidad de columnas ya correcta), la fila se marca
+directamente para revisión manual, sin forzar nada. Verificado contra un archivo real de
+2.509 filas: 1 sola fila con este problema.
+
+Aviso de contenido: filas 100% duplicadas (pasa legítimamente con pagos en cuotas del mismo
+comprobante).
+
 ### Resumen General (módulo 5 — el "rejunte")
 
 No tiene subida de archivo propia: lee lo que ya esté cargado en los otros módulos
-(`ROLLUP_SOURCE_IDS` en el código — hoy `ns`, `rg`, `rc`; `comprometidos` se suma ahí el
-día que exista) y arma un dashboard en vivo, sin volver a pedir nada.
+(`ROLLUP_SOURCE_IDS` en el código — hoy `ns`, `rg`, `rc`, `co`) y arma un dashboard en
+vivo, sin volver a pedir nada.
 
-- **Fuentes**: qué módulos tienen datos cargados y cuántas filas, con los que todavía
-  faltan marcados aparte (hoy: Comprometidos).
+- **Fuentes**: qué módulos tienen datos cargados y cuántas filas.
 - **Dashboard**: importe total, filas totales, módulos cargados, y tres rankings visuales
   (barras, no tablas de texto) — por módulo, por centro de costo, y por persona (quién
   concentra más gasto) — top 8 cada uno, ordenados de mayor a menor.

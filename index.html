@@ -458,7 +458,16 @@ function escapeHtml(s){
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+function collapse(blob, expected){
+  if (blob.length === expected) return { vals: blob.slice(), merged: false };
+  const m = blob.join(' ');
+  return { vals: new Array(expected).fill(m), merged: true };
+}
+function dupKey(headers, row){
+  return headers.map(h => row[h]).join('');
 }
 function parseArgNumber(v){
   if (v === '' || v == null) return null;
@@ -520,6 +529,11 @@ function parseNotasSalida(text){
       } else {
         anomaly = true;
       }
+    } else if (cantidadIdx >= 0 && rawFields[cantidadIdx] !== '' && parseArgNumber(rawFields[cantidadIdx]) === null){
+      // La cantidad de columnas ya coincide, pero eso no garantiza que el contenido esté
+      // alineado — dos defectos pueden compensarse (visto en Requerimiento de Compra).
+      // CANTIDAD debe ser vacío o numérico; si no lo es, algo se corrió y no confiamos ciegamente.
+      anomaly = true;
     }
 
     // Salto de línea incrustado en DESTINATARIO: se separa por \r\n, nunca por \n solo,
@@ -546,12 +560,11 @@ function parseNotasSalida(text){
   }
   const dupCounts = new Map();
   rows.forEach(r => {
-    const key = headers.map(h => r[h]).join('');
+    const key = dupKey(headers, r);
     dupCounts.set(key, (dupCounts.get(key) || 0) + 1);
   });
   rows.forEach(r => {
-    const key = headers.map(h => r[h]).join('');
-    r._flags.duplicado = dupCounts.get(key) > 1;
+    r._flags.duplicado = dupCounts.get(dupKey(headers, r)) > 1;
   });
 
   return {
@@ -602,18 +615,17 @@ function parseRequerimientosGastos(text){
     let f = line.split('\t');
     if (f.length > N && f[f.length - 1] === '') f = f.slice(0, -1);
 
-    if (f.length === N){
-      rows.push(buildRow(f, {}));
-      continue;
-    }
-
-    // Campos de texto libre (NOTA/DETALLE, DATOSPROVEEDOR, DETALLE_ITEM/OBSERVACIONES)
-    // pueden traer tabs incrustados (pegados desde otro lado) que fragmentan la fila en
-    // más columnas de las que corresponden. Se reconstruye ubicando 3 anclas confiables
-    // que nunca vienen de texto libre: SINPARTIDA (SI/NO), el bloque de 3 SI/NO seguido
-    // (ESCHEQUERAPIDO, COMPRAWEB, COMPRA_ALTO_MONTO) y CODIGOPROD (patrón fijo AAA######
-    // ################## de 21 caracteres). Todo lo que sobra entre anclas se reabsorbe
-    // en el campo de texto libre correspondiente, uniendo con espacios.
+    // OJO: la cantidad de columnas ya siendo N no alcanza para dar la fila por buena —
+    // dos defectos pueden compensarse y sumar exactamente N columnas con el contenido
+    // desalineado (visto en Requerimiento de Compra). Por eso TODA fila pasa por la misma
+    // cadena de anclas, tenga o no el largo "esperado". Campos de texto libre (NOTA/DETALLE,
+    // DATOSPROVEEDOR, DETALLE_ITEM/OBSERVACIONES) pueden traer tabs incrustados (pegados
+    // desde otro lado) que fragmentan la fila en más columnas de las que corresponden. Se
+    // reconstruye ubicando 3 anclas confiables que nunca vienen de texto libre: SINPARTIDA
+    // (SI/NO), el bloque de 3 SI/NO seguido (ESCHEQUERAPIDO, COMPRAWEB, COMPRA_ALTO_MONTO)
+    // y CODIGOPROD (patrón fijo AAA###################### de 21 caracteres). Todo lo que
+    // sobra entre anclas se reabsorbe en el campo de texto libre correspondiente, uniendo
+    // con espacios; para una fila ya bien formada esto reproduce la fila tal cual.
     if (f.length < 15){
       rows.push(buildRow(f, { anomaly: true }));
       continue;
@@ -660,11 +672,6 @@ function parseRequerimientosGastos(text){
       continue;
     }
 
-    function collapse(blob, expected){
-      if (blob.length === expected) return { vals: blob.slice(), merged: false };
-      const m = blob.join(' ');
-      return { vals: new Array(expected).fill(m), merged: true };
-    }
     const nd = collapse(notaDetalleBlob, 2);
     const io = collapse(itemObsBlob, 2);
     let opVals, opMerged;
@@ -719,10 +726,80 @@ function parseRequerimientoCompra(text){
     return row;
   }
 
-  function collapse(blob, expected){
-    if (blob.length === expected) return { vals: blob.slice(), merged: false };
-    const m = blob.join(' ');
-    return { vals: new Array(expected).fill(m), merged: true };
+  // Dado un candidato a posición del terceto IMPORTE_TOTAL_LINEA/CANTIDAD/IMPORTE_UNITARIO,
+  // intenta resolver el resto de las anclas encadenadas a partir de ahí. Devuelve null si
+  // alguna no cierra — así el llamador puede descartar un candidato aritmético que matcheó
+  // por casualidad y probar con el siguiente en vez de quedarse con el primero que aparece.
+  function attemptFromTriple(f, n, cpIdx, tripleIdx){
+    if (cpIdx + 1 >= n) return null;
+    const codalternativo = f[cpIdx + 1];
+    const mid = f.slice(cpIdx + 2, tripleIdx);
+    const imp_total = f[tripleIdx], cantidad = f[tripleIdx + 1], imp_unit = f[tripleIdx + 2];
+    let descprod, detalleitem, obs, um, detalleObsMerged = false;
+    if (mid.length === 4){
+      [descprod, detalleitem, obs, um] = mid;
+    } else if (mid.length === 3){
+      [descprod, detalleitem, obs] = mid; um = '';
+    } else if (mid.length > 4){
+      um = mid[mid.length - 1];
+      const headPart = mid.slice(0, mid.length - 1);
+      descprod = headPart[0];
+      const c = collapse(headPart.slice(1), 2);
+      [detalleitem, obs] = c.vals;
+      detalleObsMerged = headPart.length > 3;
+    } else { return null; }
+
+    if (tripleIdx + 8 >= n) return null;
+    const fechavenc = f[tripleIdx + 3];
+    const cod_ccitem = f[tripleIdx + 4];
+    const nom_ccitem = f[tripleIdx + 5];
+    const codigo_codactitem = f[tripleIdx + 6];
+    const nom_codactitem = f[tripleIdx + 7];
+    const autorizacion = f[tripleIdx + 8];
+
+    let ftIdx = -1;
+    for (let i = tripleIdx + 9; i < n; i++){ if (SINO.has(f[i])){ ftIdx = i; break; } }
+    if (ftIdx === -1) return null;
+
+    let motivo, motivoMerged = false;
+    const motivoBlob = f.slice(tripleIdx + 9, ftIdx);
+    if (motivoBlob.length === 1){ motivo = motivoBlob[0]; }
+    else if (motivoBlob.length > 1){ motivo = motivoBlob.join(' '); motivoMerged = true; }
+    else { return null; }
+
+    let siIdx = -1;
+    for (let i = ftIdx + 1; i < n; i++){ if (SINO.has(f[i])){ siIdx = i; break; } }
+    if (siIdx === -1) return null;
+
+    let obsFast, libFields, cuenta, descripcion, valortotal, blob2Merged = false;
+    const blob2 = f.slice(ftIdx + 1, siIdx);
+    if (blob2.length === 12){
+      obsFast = blob2[0];
+      libFields = blob2.slice(1, 9);
+      [cuenta, descripcion, valortotal] = blob2.slice(9, 12);
+    } else if (blob2.length > 12){
+      const tailPart = blob2.slice(-11);
+      const headPart = blob2.slice(0, blob2.length - 11);
+      libFields = tailPart.slice(0, 8);
+      [cuenta, descripcion, valortotal] = tailPart.slice(8, 11);
+      obsFast = headPart.join(' ');
+      blob2Merged = true;
+    } else { return null; }
+
+    // FECHA_IMPUTACION es el último campo real antes de la columna vacía de siempre — en
+    // algún caso real el archivo directamente se queda sin ese último valor (falta el tab
+    // final). El resto de la fila ya está confirmado en este punto, así que se lo deja
+    // vacío en vez de descartar toda la fila por un campo secundario de fecha.
+    const fecha_imputacion = (siIdx + 1 < n) ? f[siIdx + 1] : '';
+
+    return {
+      codalternativo, descprod, detalleitem, obs, um, detalleObsMerged,
+      imp_total, cantidad, imp_unit,
+      fechavenc, cod_ccitem, nom_ccitem, codigo_codactitem, nom_codactitem, autorizacion,
+      ftIdx, motivo, motivoMerged,
+      siIdx, obsFast, libFields, cuenta, descripcion, valortotal, blob2Merged,
+      fecha_imputacion
+    };
   }
 
   for (const line of dataLines){
@@ -775,106 +852,35 @@ function parseRequerimientoCompra(text){
     // más grande), se ubica el terceto IMPORTE_TOTAL_LINEA/CANTIDAD/IMPORTE_UNITARIO por
     // su propia relación aritmética (CANTIDAD × IMPORTE_UNITARIO = IMPORTE_TOTAL_LINEA),
     // que sí es un invariante real de negocio, no un patrón que depende de otra columna.
-    let tripleIdx = -1;
+    // La tolerancia (2%) puede matchear más de un número en la fila por casualidad, así
+    // que cada candidato se valida resolviendo TODA la cadena de anclas restante — si no
+    // cierra, se descarta y se prueba el siguiente candidato en vez de quedarse con el
+    // primero que aparece.
+    let tripleIdx = -1, attempt = null;
     if (ok){
       for (let i = cpIdx + 2; i <= n - 3; i++){
         const t = parseArgNumber(f[i]), c = parseArgNumber(f[i + 1]), u = parseArgNumber(f[i + 2]);
-        if (t !== null && c !== null && u !== null && Math.abs(c * u - t) <= Math.max(1, 0.02 * Math.abs(t))){
-          tripleIdx = i; break;
-        }
+        if (t === null || c === null || u === null) continue;
+        if (Math.abs(c * u - t) > Math.max(1, 0.02 * Math.abs(t))) continue;
+        const candidate = attemptFromTriple(f, n, cpIdx, i);
+        if (candidate){ tripleIdx = i; attempt = candidate; break; }
       }
       if (tripleIdx === -1) ok = false;
     }
-
-    // Entre CODPROD y el terceto va CODALTERNATIVO + DESCPROD + DETALLEITEM + OBS + UM.
-    // CODALTERNATIVO casi nunca trae texto libre, se toma directo. El resto puede traer
-    // más campos de la cuenta (DESCPROD incluido, se vio fragmentarse en un caso real) o
-    // uno menos si UM directamente falta — se resuelve por longitud del tramo, no por
-    // anclas internas (no hay ninguna confiable ahí adentro).
-    let codalternativo, descprod, detalleitem, obs, um, imp_total, cantidad, imp_unit;
-    let detalleObsMerged = false;
-    if (ok){
-      if (cpIdx + 1 >= n){ ok = false; }
-      else{
-        codalternativo = f[cpIdx + 1];
-        const mid = f.slice(cpIdx + 2, tripleIdx);
-        imp_total = f[tripleIdx]; cantidad = f[tripleIdx + 1]; imp_unit = f[tripleIdx + 2];
-        if (mid.length === 4){
-          [descprod, detalleitem, obs, um] = mid;
-        } else if (mid.length === 3){
-          [descprod, detalleitem, obs] = mid; um = '';
-        } else if (mid.length > 4){
-          um = mid[mid.length - 1];
-          const headPart = mid.slice(0, mid.length - 1);
-          descprod = headPart[0];
-          const c = collapse(headPart.slice(1), 2);
-          [detalleitem, obs] = c.vals;
-          detalleObsMerged = headPart.length > 3;
-        } else { ok = false; }
-      }
-    }
-
-    let fechavenc, cod_ccitem, nom_ccitem, codigo_codactitem, nom_codactitem, autorizacion;
-    if (ok){
-      if (tripleIdx + 8 >= n){ ok = false; }
-      else{
-        fechavenc = f[tripleIdx + 3];
-        cod_ccitem = f[tripleIdx + 4];
-        nom_ccitem = f[tripleIdx + 5];
-        codigo_codactitem = f[tripleIdx + 6];
-        nom_codactitem = f[tripleIdx + 7];
-        autorizacion = f[tripleIdx + 8];
-      }
-    }
-
-    let ftIdx = -1;
-    if (ok){
-      for (let i = tripleIdx + 9; i < n; i++){ if (SINO.has(f[i])){ ftIdx = i; break; } }
-      if (ftIdx === -1) ok = false;
-    }
-
-    let motivo, motivoMerged = false;
-    if (ok){
-      const motivoBlob = f.slice(tripleIdx + 9, ftIdx);
-      if (motivoBlob.length === 1){ motivo = motivoBlob[0]; }
-      else if (motivoBlob.length > 1){ motivo = motivoBlob.join(' '); motivoMerged = true; }
-      else { ok = false; }
-    }
-
-    let siIdx = -1;
-    if (ok){
-      for (let i = ftIdx + 1; i < n; i++){ if (SINO.has(f[i])){ siIdx = i; break; } }
-      if (siIdx === -1) ok = false;
-    }
-
-    let obsFast, libFields, cuenta, descripcion, valortotal, blob2Merged = false;
-    if (ok){
-      const blob2 = f.slice(ftIdx + 1, siIdx);
-      if (blob2.length === 12){
-        obsFast = blob2[0];
-        libFields = blob2.slice(1, 9);
-        [cuenta, descripcion, valortotal] = blob2.slice(9, 12);
-      } else if (blob2.length > 12){
-        const tailPart = blob2.slice(-11);
-        const headPart = blob2.slice(0, blob2.length - 11);
-        libFields = tailPart.slice(0, 8);
-        [cuenta, descripcion, valortotal] = tailPart.slice(8, 11);
-        obsFast = headPart.join(' ');
-        blob2Merged = true;
-      } else { ok = false; }
-    }
-
-    // FECHA_IMPUTACION es el último campo real antes de la columna vacía de siempre — en
-    // algún caso real el archivo directamente se queda sin ese último valor (falta el tab
-    // final). El resto de la fila (importes, cantidades, todo lo verificado por anclas)
-    // ya está confirmado en este punto, así que se lo deja vacío en vez de descartar toda
-    // la fila por un campo secundario de fecha.
-    const fecha_imputacion = (siIdx + 1 < n) ? f[siIdx + 1] : '';
 
     if (!ok){
       rows.push(buildRow(f, { anomaly: true }));
       continue;
     }
+
+    const {
+      codalternativo, descprod, detalleitem, obs, um, detalleObsMerged,
+      imp_total, cantidad, imp_unit,
+      fechavenc, cod_ccitem, nom_ccitem, codigo_codactitem, nom_codactitem, autorizacion,
+      ftIdx, motivo, motivoMerged,
+      siIdx, obsFast, libFields, cuenta, descripcion, valortotal, blob2Merged,
+      fecha_imputacion
+    } = attempt;
 
     const detalleBlobRaw = f.slice(4, spIdx);
     const dCollapse = collapse(detalleBlobRaw, 1);
@@ -907,6 +913,74 @@ function parseRequerimientoCompra(text){
   };
 }
 
+/* ================= módulo: Comprometidos ================= */
+function parseComprometidos(text){
+  const HEADER_ROWS_TO_SKIP = 3;
+  const REQUIRED = ['NOMBRE', 'ROUND(TOTAL,2)', 'DETALLE'];
+
+  let lines = text.split('\r\n');
+  while (lines.length && lines[lines.length - 1].trim() === '') lines.pop();
+  if (lines.length <= HEADER_ROWS_TO_SKIP){
+    throw new Error('El archivo tiene muy pocas filas — no parece una exportación de Comprometidos completa.');
+  }
+  const headers = lines[HEADER_ROWS_TO_SKIP].split('\t').map(h => h.trim());
+  if (headers.length && headers[headers.length - 1] === '') headers.pop();
+  const missing = REQUIRED.filter(h => !headers.includes(h));
+  if (missing.length){
+    throw new Error('No se encontró el encabezado esperado en la fila 4 (faltan columnas: ' + missing.join(', ') + '). ¿Es el archivo correcto?');
+  }
+
+  const N = headers.length;
+  const totalIdx = headers.indexOf('ROUND(TOTAL,2)');
+  const dataLines = lines.slice(HEADER_ROWS_TO_SKIP + 1).filter(l => l.trim() !== '');
+  const rows = [];
+
+  for (const line of dataLines){
+    let f = line.split('\t');
+    if (f.length > N && f[f.length - 1] === '') f = f.slice(0, -1);
+
+    // A diferencia de los otros módulos, acá DETALLE y NOTA son ambos texto libre frecuente
+    // y sin ninguna ancla fija entre medio (ni un enum SI/NO, ni un código con patrón
+    // reconocible) — no hay forma confiable de saber dónde cortar un tab incrustado. Por
+    // eso, a diferencia de Notas de Salida/Requerimientos de Gastos/Requerimiento de
+    // Compra, acá no se intenta reconstruir: si la cantidad de columnas no cierra, se
+    // marca directamente para revisión manual.
+    let anomaly = false;
+    if (f.length !== N){
+      anomaly = true;
+    } else if (totalIdx >= 0 && f[totalIdx] !== '' && parseArgNumber(f[totalIdx]) === null){
+      // El largo correcto tampoco garantiza contenido alineado (mismo criterio que en los
+      // demás módulos): el importe debe ser vacío o numérico.
+      anomaly = true;
+    }
+
+    const row = {};
+    headers.forEach((h, i) => { row[h] = f[i] !== undefined ? f[i].trim() : ''; });
+    row._id = row['NOMBRE'] || '(sin identificar)';
+    row._flags = { anomaly: anomaly, duplicado: false };
+    rows.push(row);
+  }
+
+  // Aviso de contenido (no es un bug de parseo): filas idénticas en todas las columnas.
+  // Pasa legítimamente con pagos en cuotas del mismo comprobante — se señala, no se toca.
+  const dupCounts = new Map();
+  rows.forEach(r => {
+    const key = dupKey(headers, r);
+    dupCounts.set(key, (dupCounts.get(key) || 0) + 1);
+  });
+  rows.forEach(r => {
+    r._flags.duplicado = dupCounts.get(dupKey(headers, r)) > 1;
+  });
+
+  return {
+    headers, rows,
+    fixes: [],
+    avisos: [
+      { key: 'duplicado', label: 'Filas duplicadas exactas', col: 'NOMBRE', tagText: () => 'duplicada' }
+    ]
+  };
+}
+
 /* ================= definición de módulos / motor genérico ================= */
 const MODULES = [
   {
@@ -927,6 +1001,10 @@ const MODULES = [
     fileHint: 'Formato esperado: .xls (texto delimitado por tabs)',
     accept: '.xls,.txt,.csv,.tsv',
     parseFn: parseRequerimientosGastos,
+    // 'MPORTE_UNITARIO' (sin la I inicial) no es un typo nuestro — así viene el encabezado
+    // en el export real del sistema fuente. Se usa tal cual a propósito; "corregirlo" a
+    // IMPORTE_UNITARIO rompe la conversión numérica en silencio (la columna no existe con
+    // ese nombre en los datos reales).
     numericCols: new Set(['MPORTE_UNITARIO', 'CANTIDAD', 'IMPORTE_TOTAL_LINEA', 'VALORTOTAL']),
     dateCols: new Set(['FECHA_TRANSACCION', 'FECHA_ULTIMOESTADO']),
     sheetName: 'Requerimientos de Gastos',
@@ -944,6 +1022,18 @@ const MODULES = [
     sheetName: 'Requerimiento de Compra',
     fileBase: 'requerimiento_compra',
     dashboardMap: { amountCol: 'IMPORTE_TOTAL_LINEA', centroCol: 'DESC_CC', personaCol: 'ORIGIN' }
+  },
+  {
+    id: 'co',
+    tabLabel: 'Comprometidos',
+    fileHint: 'Formato esperado: .xls (texto delimitado por tabs)',
+    accept: '.xls,.txt,.csv,.tsv',
+    parseFn: parseComprometidos,
+    numericCols: new Set(['ROUND(TOTAL,2)']),
+    dateCols: new Set(),
+    sheetName: 'Comprometidos',
+    fileBase: 'comprometidos',
+    dashboardMap: { amountCol: 'ROUND(TOTAL,2)', centroCol: 'CENTRO_COSTO', personaCol: 'NOMBRE' }
   }
 ];
 MODULES.forEach(m => { m.state = { parsed: null, sourceName: '' }; });
@@ -1275,7 +1365,7 @@ function downloadCleaned(mod){
 }
 
 /* ================= módulo 5: Resumen General (rejunte + dashboard) ================= */
-const ROLLUP_SOURCE_IDS = ['ns', 'rg', 'rc']; // 'comprometidos' se suma acá cuando exista
+const ROLLUP_SOURCE_IDS = ['ns', 'rg', 'rc', 'co'];
 const TOP_N = 8;
 
 function fmtMoney(n){
@@ -1347,13 +1437,13 @@ function renderRollup(){
       <span class="fuente-label">${escapeHtml(mod.tabLabel)}</span>
       <span class="fuente-status">${ok ? n + ' filas' : 'sin cargar'}</span>
     </div>`;
-  }).join('') + `<div class="fuente pending"><span class="dot2"></span><span class="fuente-label">Comprometidos</span><span class="fuente-status">módulo pendiente</span></div>`;
+  }).join('');
   document.getElementById('resumen-fuentes').innerHTML = fuentesHtml;
 
   document.getElementById('resumen-statRow').innerHTML = `
     <div class="stat"><div class="n">${fmtMoney(R.totalImporte)}</div><div class="l">Importe total (módulos cargados)</div></div>
     <div class="stat"><div class="n">${R.totalFilas.toLocaleString('es-AR')}</div><div class="l">Filas totales</div></div>
-    <div class="stat"><div class="n">${R.loaded.length}/${ROLLUP_SOURCE_IDS.length + 1}</div><div class="l">Módulos con datos cargados</div></div>
+    <div class="stat"><div class="n">${R.loaded.length}/${ROLLUP_SOURCE_IDS.length}</div><div class="l">Módulos con datos cargados</div></div>
     ${R.filasExcluidas ? `<div class="stat anomaly"><div class="n">${R.filasExcluidas}</div><div class="l">Filas excluidas del cálculo (anomalías sin reconstruir)</div></div>` : ''}
   `;
 
